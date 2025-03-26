@@ -369,6 +369,8 @@ MonoBehaviour:
   height: 16
   depth: 16
   surface: 0
+  terrainMaterial: {fileID: 2100000, guid: b0189da263349df4dbd1c61ebf5855ab, type: 2}
+  tunnelMaterial: {fileID: 2100000, guid: 6a3d1ac4ab6eeca48bb6faf4cc2a4864, type: 2}
 --- !u!64 &846219734
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -414,8 +416,8 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: d24e0676c17b1574d91b51a5efe9734d, type: 2}
   - {fileID: 2100000, guid: 6a3d1ac4ab6eeca48bb6faf4cc2a4864, type: 2}
+  - {fileID: 2100000, guid: b0189da263349df4dbd1c61ebf5855ab, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0

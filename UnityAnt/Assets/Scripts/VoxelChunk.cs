@@ -36,6 +36,9 @@ public class VoxelChunk : MonoBehaviour
     void GenerateInitialData()
     {
         voxelData.Clear();
+
+        int worldY = Mathf.RoundToInt(transform.position.y);
+
         for (int x = -1; x <= width + 1; x++)
         {
             for (int y = -1; y <= height + 1; y++)
@@ -43,12 +46,21 @@ public class VoxelChunk : MonoBehaviour
                 for (int z = -1; z <= depth + 1; z++)
                 {
                     Vector3Int pos = new(x, y, z);
-                    bool isEdge = x == -1 || x == width + 1 || y == -1 || y == height + 1 || z == -1 || z == depth + 1;
-                    voxelData[pos] = isEdge ? -1f : 1f;
+                    int globalY = worldY + y;
+
+                    if (globalY > 0)
+                    {
+                        voxelData[pos] = -1f; // air above ground
+                    }
+                    else
+                    {
+                        voxelData[pos] = 1f; // solid ground and below
+                    }
                 }
             }
         }
     }
+
 
     public void Dig(Vector3 worldPos, float radius)
     {
@@ -69,7 +81,7 @@ public class VoxelChunk : MonoBehaviour
                     float distance = Vector3.Distance(pos, localPos);
                     if (distance < radius)
                     {
-                        float fade = Mathf.InverseLerp(radius, radius * 0.5f, distance);
+                        float fade = Mathf.InverseLerp(radius, radius * 0.3f, distance); // more aggressive fade
                         float newValue = Mathf.Lerp(voxelData[pos], -1f, fade);
                         if (!Mathf.Approximately(voxelData[pos], newValue))
                         {
