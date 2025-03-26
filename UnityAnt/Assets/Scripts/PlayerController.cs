@@ -11,6 +11,8 @@ public class PlayerController : MonoBehaviour
     private Camera playerCamera;
     private float rotationX = 0f;  // Variable to track vertical camera rotation
 
+    private bool cursorUnlocked = false;
+
     void Start()
     {
         rb = GetComponent<Rigidbody>();
@@ -31,25 +33,36 @@ public class PlayerController : MonoBehaviour
 
     void Update()
     {
-        // Fly movement (WASD for forward/backward/left/right, QE for up/down)
+        // Toggle cursor lock/unlock with Escape
+        if (Input.GetKeyDown(KeyCode.Escape))
+        {
+            cursorUnlocked = !cursorUnlocked;
+            Cursor.lockState = cursorUnlocked ? CursorLockMode.None : CursorLockMode.Locked;
+            Cursor.visible = cursorUnlocked;
+        }
+
+        if (!cursorUnlocked)
+        {
+            HandleMovement();
+            CameraMovement();
+
+            if (Input.GetMouseButtonDown(0))
+            {
+                DigAtMousePosition();
+            }
+        }
+    }
+    void HandleMovement()
+    {
         float moveX = Input.GetAxis("Horizontal");
         float moveY = Input.GetAxis("Vertical");
         float moveZ = 0f;
 
-        if (Input.GetKey(KeyCode.Q)) moveZ = -1f;  // Move down (Q)
-        if (Input.GetKey(KeyCode.E)) moveZ = 1f;   // Move up (E)
+        if (Input.GetKey(KeyCode.Q)) moveZ = -1f;
+        if (Input.GetKey(KeyCode.E)) moveZ = 1f;
 
         Vector3 moveDirection = transform.right * moveX + transform.up * moveZ + transform.forward * moveY;
-        rb.linearVelocity = moveDirection * flySpeed;  // Use linearVelocity as per Unity 6
-
-        // Digging (Left-click to dig at the mouse position)
-        if (Input.GetMouseButtonDown(0))
-        {
-            DigAtMousePosition();
-        }
-
-        // Camera movement and rotation
-        CameraMovement();
+        rb.linearVelocity = moveDirection * flySpeed;
     }
 
     void DigAtMousePosition()
@@ -84,27 +97,14 @@ public class PlayerController : MonoBehaviour
 
     void CameraMovement()
     {
-        // Camera movement using WASD or arrow keys
-        float moveX = Input.GetAxis("Horizontal");
-        float moveY = Input.GetAxis("Vertical");
-        float moveZ = 0f;
-
-        if (Input.GetKey(KeyCode.Q)) moveZ = -1f;  // Move down (Q)
-        if (Input.GetKey(KeyCode.E)) moveZ = 1f;   // Move up (E)
-
-        Vector3 moveDirection = new Vector3(moveX, moveZ, moveY) * moveSpeed * Time.deltaTime;
-        transform.Translate(moveDirection);
-
-        // Camera rotation using mouse (left-right, up-down)
         float mouseX = Input.GetAxis("Mouse X") * 2f;
         float mouseY = -Input.GetAxis("Mouse Y") * 2f;
 
-        // Rotate player for horizontal (left-right) look
         transform.Rotate(Vector3.up, mouseX);
 
-        // Rotate camera for vertical (up-down) look
         rotationX += mouseY;
-        rotationX = Mathf.Clamp(rotationX, -80f, 80f); // Limit vertical rotation to prevent full rotation
+        rotationX = Mathf.Clamp(rotationX, -80f, 80f);
         playerCamera.transform.localRotation = Quaternion.Euler(rotationX, 0f, 0f);
     }
+
 }

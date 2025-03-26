@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Threading.Tasks;
 using UnityEngine;
 using MarchingCubesProject;
@@ -8,6 +8,9 @@ public class VoxelChunk : MonoBehaviour
 {
     public int width = 16, height = 16, depth = 16;
     public float surface = 0.0f;
+
+    private bool rebuildQueued = false;
+
 
     private Dictionary<Vector3Int, float> voxelData = new();
     private MeshFilter meshFilter;
@@ -36,7 +39,6 @@ public class VoxelChunk : MonoBehaviour
     void GenerateInitialData()
     {
         voxelData.Clear();
-
         int worldY = Mathf.RoundToInt(transform.position.y);
 
         for (int x = -1; x <= width + 1; x++)
@@ -50,17 +52,16 @@ public class VoxelChunk : MonoBehaviour
 
                     if (globalY > 0)
                     {
-                        voxelData[pos] = -1f; // air above ground
+                        voxelData[pos] = -1f;
                     }
                     else
                     {
-                        voxelData[pos] = 1f; // solid ground and below
+                        voxelData[pos] = 1f;
                     }
                 }
             }
         }
     }
-
 
     public void Dig(Vector3 worldPos, float radius)
     {
@@ -81,11 +82,11 @@ public class VoxelChunk : MonoBehaviour
                     float distance = Vector3.Distance(pos, localPos);
                     if (distance < radius)
                     {
-                        float fade = Mathf.InverseLerp(radius, radius * 0.3f, distance); // more aggressive fade
+                        float fade = Mathf.SmoothStep(1f, 0f, distance / radius);
                         float newValue = Mathf.Lerp(voxelData[pos], -1f, fade);
                         if (!Mathf.Approximately(voxelData[pos], newValue))
                         {
-                            voxelData[pos] = newValue;
+                            voxelData[pos] = Mathf.Max(newValue, -1f);
                             changed = true;
                         }
                     }
@@ -93,10 +94,12 @@ public class VoxelChunk : MonoBehaviour
             }
         }
 
-        if (changed)
+        if (changed && !rebuildQueued)
         {
-            _ = GenerateMeshAsync();
+            rebuildQueued = true;
+            Invoke(nameof(TriggerMeshRebuild), 0.05f); // delay rebuild slightly
         }
+
     }
 
     async Task GenerateMeshAsync()
@@ -123,15 +126,16 @@ public class VoxelChunk : MonoBehaviour
             marchingCubes.Generate(density, verts, null);
         });
 
-        // Safety check
-        if (verts.Count < 3 ||
-            (marchingCubes.terrainIndices.Count < 3 && marchingCubes.tunnelIndices.Count < 3))
+        bool hasTerrain = marchingCubes.terrainIndices.Count >= 3 && marchingCubes.terrainIndices.Count % 3 == 0;
+        bool hasTunnel = marchingCubes.tunnelIndices.Count >= 3 && marchingCubes.tunnelIndices.Count % 3 == 0;
+
+        if (!hasTerrain && !hasTunnel)
         {
-            meshFilter.mesh = null;
-            meshCollider.sharedMesh = null;
+            Debug.LogWarning($"Skipping mesh update: insufficient triangle data in {name}");
             return;
         }
 
+        // ✅ Construct mesh AFTER verifying triangles
         Mesh mesh = new()
         {
             indexFormat = UnityEngine.Rendering.IndexFormat.UInt32
@@ -139,13 +143,31 @@ public class VoxelChunk : MonoBehaviour
 
         mesh.SetVertices(verts);
         mesh.subMeshCount = 2;
-        mesh.SetTriangles(marchingCubes.terrainIndices, 0);
-        mesh.SetTriangles(marchingCubes.tunnelIndices, 1);
-        mesh.RecalculateNormals();
 
+        if (hasTerrain)
+            mesh.SetTriangles(marchingCubes.terrainIndices, 0);
+        if (hasTunnel)
+            mesh.SetTriangles(marchingCubes.tunnelIndices, 1);
+
+        mesh.RecalculateNormals();
         meshFilter.mesh = mesh;
-        meshCollider.sharedMesh = mesh;
+
+        // ✅ Assign collider only if valid
+        await Task.Yield(); // delay one frame to avoid collider crash
+        if (mesh.triangles.Length >= 3)
+        {
+            meshCollider.sharedMesh = null;
+            meshCollider.sharedMesh = mesh;
+        }
     }
+
+
+    void TriggerMeshRebuild()
+    {
+        _ = GenerateMeshAsync();
+        rebuildQueued = false;
+    }
+
 
     void Update()
     {
