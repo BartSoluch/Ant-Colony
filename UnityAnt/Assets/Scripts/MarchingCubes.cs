@@ -1,7 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-
+using JetBrains.Annotations;
 using UnityEngine;
 
 namespace MarchingCubesProject
@@ -10,6 +10,10 @@ namespace MarchingCubesProject
     {
 
         private Vector3[] EdgeVertex { get; set; }
+
+		public List<int> terrainIndices = new();
+		public List<int> tunnelIndices = new();
+
 
         public MarchingCubes(float surface = 0.0f) : base(surface)
         {
@@ -25,6 +29,7 @@ namespace MarchingCubesProject
             int flagIndex = 0;
             float offset = 0.0f;
 
+
             //Find which vertices are inside of the surface and which are outside
             for (i = 0; i < 8; i++) if (cube[i] <= Surface) flagIndex |= 1 << i;
 
@@ -33,6 +38,16 @@ namespace MarchingCubesProject
 
             //If the cube is entirely inside or outside of the surface, then there will be no intersections
             if (edgeFlags == 0) return;
+
+            bool isTunnelCube = false;
+            for (int c = 0; c < 8; c++)
+            {
+                if (cube[c] <= -0.9f)
+                {
+                    isTunnelCube = true;
+                    break;
+                }
+            }
 
             //Find the point of intersection of the surface with each edge
             for (i = 0; i < 12; i++)
@@ -58,18 +73,31 @@ namespace MarchingCubesProject
                 for (j = 0; j < 3; j++)
                 {
                     vert = TriangleConnectionTable[flagIndex, 3 * i + j];
-                    indexList.Add(idx + WindingOrder[j]);
                     vertList.Add(EdgeVertex[vert]);
                 }
+
+                if (isTunnelCube)
+                {
+                    tunnelIndices.Add(idx);
+                    tunnelIndices.Add(idx + 1);
+                    tunnelIndices.Add(idx + 2);
+                }
+                else
+                {
+                    terrainIndices.Add(idx);
+                    terrainIndices.Add(idx + 1);
+                    terrainIndices.Add(idx + 2);
+                }
             }
+
         }
 
-		/// <summary>
-		/// EdgeConnection lists the index of the endpoint vertices for each 
-		/// of the 12 edges of the cube.
-		/// edgeConnection[12][2]
-		/// </summary>
-		private static readonly int[,] EdgeConnection = new int[,] 
+        /// <summary>
+        /// EdgeConnection lists the index of the endpoint vertices for each 
+        /// of the 12 edges of the cube.
+        /// edgeConnection[12][2]
+        /// </summary>
+        private static readonly int[,] EdgeConnection = new int[,] 
 	    {
 	        {0,1}, {1,2}, {2,3}, {3,0},
 	        {4,5}, {5,6}, {6,7}, {7,4},

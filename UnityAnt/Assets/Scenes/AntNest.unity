@@ -414,7 +414,8 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: b0189da263349df4dbd1c61ebf5855ab, type: 2}
+  - {fileID: 2100000, guid: d24e0676c17b1574d91b51a5efe9734d, type: 2}
+  - {fileID: 2100000, guid: 6a3d1ac4ab6eeca48bb6faf4cc2a4864, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -489,9 +490,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   chunkPrefab: {fileID: 846219732}
-  chunksX: 10
-  chunksY: 10
-  chunksZ: 10
+  chunksX: 5
+  chunksY: 5
+  chunksZ: 5
   surface: 0
 --- !u!4 &976348511
 Transform:

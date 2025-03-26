@@ -1,4 +1,3 @@
-// VoxelChunk.cs
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using UnityEngine;
@@ -15,6 +14,9 @@ public class VoxelChunk : MonoBehaviour
     private MeshCollider meshCollider;
     private MarchingCubes marchingCubes;
 
+    [SerializeField] private Material terrainMaterial;
+    [SerializeField] private Material tunnelMaterial;
+
     public void Init(float surface)
     {
         this.surface = surface;
@@ -22,6 +24,10 @@ public class VoxelChunk : MonoBehaviour
 
         meshFilter = GetComponent<MeshFilter>();
         meshCollider = GetComponent<MeshCollider>();
+
+        // Assign both materials to the renderer
+        MeshRenderer renderer = GetComponent<MeshRenderer>();
+        renderer.materials = new Material[] { terrainMaterial, tunnelMaterial };
 
         GenerateInitialData();
         _ = GenerateMeshAsync();
@@ -83,7 +89,7 @@ public class VoxelChunk : MonoBehaviour
 
     async Task GenerateMeshAsync()
     {
-        float[,,] array = new float[width + 3, height + 3, depth + 3];
+        float[,,] density = new float[width + 3, height + 3, depth + 3];
 
         foreach (var kvp in voxelData)
         {
@@ -93,81 +99,51 @@ public class VoxelChunk : MonoBehaviour
             int z = pos.z + 1;
 
             if (x >= 0 && x < width + 3 && y >= 0 && y < height + 3 && z >= 0 && z < depth + 3)
-                array[x, y, z] = kvp.Value;
+                density[x, y, z] = kvp.Value;
         }
 
         List<Vector3> verts = new();
-        List<int> terrainTris = new();
-        List<int> tunnelTris = new();
+        marchingCubes.terrainIndices.Clear();
+        marchingCubes.tunnelIndices.Clear();
 
         await Task.Run(() =>
         {
-            marchingCubes.Generate(array, verts, terrainTris);
+            marchingCubes.Generate(density, verts, null);
         });
 
-        // Simple way to separate tunnel surface triangles: if vertex is next to empty voxel
-        for (int i = 0; i < terrainTris.Count; i += 3)
+        // Safety check
+        if (verts.Count < 3 ||
+            (marchingCubes.terrainIndices.Count < 3 && marchingCubes.tunnelIndices.Count < 3))
         {
-            Vector3 v1 = verts[terrainTris[i]];
-            Vector3 v2 = verts[terrainTris[i + 1]];
-            Vector3 v3 = verts[terrainTris[i + 2]];
-            Vector3 center = (v1 + v2 + v3) / 3f;
-
-            Vector3Int voxelPos = Vector3Int.FloorToInt(center - Vector3.one);
-
-            bool isTunnel = false;
-            for (int dx = -1; dx <= 1 && !isTunnel; dx++)
-            {
-                for (int dy = -1; dy <= 1 && !isTunnel; dy++)
-                {
-                    for (int dz = -1; dz <= 1 && !isTunnel; dz++)
-                    {
-                        Vector3Int neighbor = voxelPos + new Vector3Int(dx, dy, dz);
-                        if (voxelData.TryGetValue(neighbor, out float value) && value <= -0.9f)
-                        {
-                            isTunnel = true;
-                        }
-                    }
-                }
-            }
-
-            if (isTunnel)
-            {
-                tunnelTris.Add(terrainTris[i]);
-                tunnelTris.Add(terrainTris[i + 1]);
-                tunnelTris.Add(terrainTris[i + 2]);
-            }
-        }
-
-        // Remove tunnel triangles from the terrain list
-        foreach (int index in tunnelTris)
-        {
-            terrainTris.Remove(index);
+            meshFilter.mesh = null;
+            meshCollider.sharedMesh = null;
+            return;
         }
 
         Mesh mesh = new()
         {
             indexFormat = UnityEngine.Rendering.IndexFormat.UInt32
         };
+
         mesh.SetVertices(verts);
         mesh.subMeshCount = 2;
-        mesh.SetTriangles(terrainTris, 0);
-        mesh.SetTriangles(tunnelTris, 1);
+        mesh.SetTriangles(marchingCubes.terrainIndices, 0);
+        mesh.SetTriangles(marchingCubes.tunnelIndices, 1);
         mesh.RecalculateNormals();
 
         meshFilter.mesh = mesh;
         meshCollider.sharedMesh = mesh;
     }
 
-
     void Update()
     {
         if (meshFilter != null && meshFilter.sharedMesh != null)
         {
-            Material mat = GetComponent<Renderer>().material;
-            mat.SetVector("_RevealCenter", Camera.main.transform.position);
+            Material[] mats = GetComponent<MeshRenderer>().materials;
+            foreach (var mat in mats)
+            {
+                mat.SetVector("_RevealCenter", Camera.main.transform.position);
+            }
         }
     }
-
-
 }
