@@ -1,5 +1,7 @@
 ﻿using UnityEngine;
 using System.Collections;
+using System.Collections.Generic;
+
 
 public class PheromoneField : MonoBehaviour
 {
@@ -25,6 +27,11 @@ public class PheromoneField : MonoBehaviour
     void Start()
     {
         StartCoroutine(InitAfterVoxelWorld());
+        Vector3 center = VoxelWorld.Instance.GetCenterWorldPosition();
+        Vector3Int pos = Vector3Int.FloorToInt(center);
+        digPheromones[pos.x, pos.y, pos.z] = 10f; // or something high
+        Debug.Log($"Seeded pheromone at {pos}: {digPheromones[pos.x, pos.y, pos.z]}");
+
     }
 
     IEnumerator InitAfterVoxelWorld()
