@@ -1,0 +1,93 @@
+// MarchingCubes.compute
+// Compute shader version of Marching Cubes
+
+#pragma kernel Generate
+
+#include "MarchingCubesTables.cginc"
+
+StructuredBuffer<float> _Density;
+RWStructuredBuffer<float3> _Vertices;
+AppendStructuredBuffer<uint> _Indices;
+
+int3 _GridSize;
+float _Surface;
+
+[numthreads(1, 1, 1)]
+void Generate(uint3 id : SV_DispatchThreadID)
+{
+    int x = id.x;
+    int y = id.y;
+    int z = id.z;
+
+    if (x >= _GridSize.x - 1 || y >= _GridSize.y - 1 || z >= _GridSize.z - 1)
+        return;
+
+    int3 cube[8] =
+    {
+        int3(x, y, z),
+        int3(x + 1, y, z),
+        int3(x + 1, y, z + 1),
+        int3(x, y, z + 1),
+        int3(x, y + 1, z),
+        int3(x + 1, y + 1, z),
+        int3(x + 1, y + 1, z + 1),
+        int3(x, y + 1, z + 1)
+    };
+
+    float cubeValues[8];
+    for (int i = 0; i < 8; i++)
+    {
+        int idx = cube[i].x + cube[i].y * _GridSize.x + cube[i].z * _GridSize.x * _GridSize.y;
+        cubeValues[i] = _Density[idx];
+    }
+
+    int cubeIndex = 0;
+    for (int i = 0; i < 8; i++)
+        if (cubeValues[i] < _Surface)
+            cubeIndex |= (1 << i);
+
+    int edgeMask = edgeTable[cubeIndex];
+    if (edgeMask == 0)
+        return;
+
+    float3 vertList[12];
+
+    [unroll]
+    for (int i = 0; i < 12; i++)
+    {
+        if ((edgeMask & (1 << i)) != 0)
+        {
+            int v0 = cornerIndexAFromEdge[i];
+            int v1 = cornerIndexBFromEdge[i];
+
+            float3 p0 = cube[v0];
+            float3 p1 = cube[v1];
+            float val0 = cubeValues[v0];
+            float val1 = cubeValues[v1];
+
+            float t = (_Surface - val0) / (val1 - val0 + 0.0001);
+            vertList[i] = lerp(p0, p1, t);
+        }
+    }
+
+    [unroll]
+    for (int i = 0; i < 16; i += 3)
+    {
+        int a = triTable[cubeIndex][i];
+        int b = triTable[cubeIndex][i + 1];
+        int c = triTable[cubeIndex][i + 2];
+
+        if (a == -1 || b == -1 || c == -1)
+            break;
+
+        uint baseIndex = _Vertices.IncrementCounter();
+
+        _Vertices[baseIndex] = vertList[a];
+        _Vertices[baseIndex + 1] = vertList[b];
+        _Vertices[baseIndex + 2] = vertList[c];
+
+        _Indices.Append(baseIndex);
+        _Indices.Append(baseIndex + 1);
+        _Indices.Append(baseIndex + 2);
+    }
+}

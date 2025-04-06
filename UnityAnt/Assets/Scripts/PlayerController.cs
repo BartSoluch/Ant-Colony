@@ -22,12 +22,6 @@ public class PlayerController : MonoBehaviour
         if (voxelWorld == null)
         {
             voxelWorld = FindFirstObjectByType<VoxelWorld>();
-
-            // If we couldn't find it, log an error
-            if (voxelWorld == null)
-            {
-                Debug.LogError("VoxelWorld not found! Please make sure it is in the scene.");
-            }
         }
     }
 
