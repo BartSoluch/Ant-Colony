@@ -1,4 +1,5 @@
 #pragma kernel CSMain
+#define P 1 // Must match the C# side padding
 
 struct Vert
 {
@@ -11,6 +12,7 @@ StructuredBuffer<float> _Voxels;
 StructuredBuffer<int> _CubeEdgeFlags;
 StructuredBuffer<int> _TriangleConnectionTable;
 RWBuffer<int> _VertexIndexBuffer; // Counter buffer
+float3 _ChunkWorldPosition;
 
 int _Width;
 int _Height;
@@ -43,16 +45,17 @@ static const int EdgeVertexMap[12][2] =
 [numthreads(8, 8, 8)]
 void CSMain(uint3 id : SV_DispatchThreadID)
 {
-    if (id.x >= _Width - 1 || id.y >= _Height - 1 || id.z >= _Depth - 1)
+    if (id.x >= (_Width - 1 - P * 2) || id.y >= (_Height - 1 - P * 2) || id.z >= (_Depth - 1 - P * 2))
         return;
 
     float values[8];
     float3 positions[8];
     int cubeIndex = 0;
 
+    int3 paddedID = int3(id.x + P, id.y + P, id.z + P);
     for (int j = 0; j < 8; j++)
     {
-        int3 corner = int3(id) + CornerOffsets[j];
+        int3 corner = paddedID + CornerOffsets[j];
         int index = corner.x + corner.y * _Width + corner.z * _Width * _Height;
         float val = _Voxels[index];
         values[j] = val;
@@ -68,7 +71,8 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     float3 edgeVertices[12];
     for (int i = 0; i < 12; i++)
     {
-        if ((edgeFlags & (1u << i)) == 0)
+        uint flags = asuint(edgeFlags);
+        if ((flags & (1u << i)) == 0)
             continue;
 
         int a = EdgeVertexMap[i][0];
@@ -102,13 +106,13 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         int baseIndex;
         InterlockedAdd(_VertexIndexBuffer[0], 3, baseIndex); // 3 vertices per triangle
 
-        v.position = float4(pa, 1);
+        v.position = float4(pa + _ChunkWorldPosition, 1);
         _Buffer[baseIndex + 0] = v;
 
-        v.position = float4(pb, 1);
+        v.position = float4(pb + _ChunkWorldPosition, 1);
         _Buffer[baseIndex + 1] = v;
 
-        v.position = float4(pc, 1);
+        v.position = float4(pc + _ChunkWorldPosition, 1);
         _Buffer[baseIndex + 2] = v;
     }
 }

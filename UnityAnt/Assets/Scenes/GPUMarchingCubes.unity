@@ -313,7 +313,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &1615266614
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -326,12 +326,15 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6404f20b05dc14540b025bb6ccb784e9, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_seed: 0
+  m_seed: 15
   m_digShader: {fileID: 7200000, guid: 418c4a3b4787f5c4d84fa37a55904a24, type: 3}
   m_drawBuffer: {fileID: 2100000, guid: 88a56eb15e281b247bbff7f2c3d69458, type: 2}
   m_perlinNoise: {fileID: 7200000, guid: a1a0c08741b74c54988d6ce3ef373c70, type: 3}
   m_marchingCubes: {fileID: 7200000, guid: 714069d253d07644c9a216db5121af3c, type: 3}
   m_normals: {fileID: 7200000, guid: c88e189ad8c364b4babacbcbc47a3e86, type: 3}
+  voxelMaterial: {fileID: 2100000, guid: 88a56eb15e281b247bbff7f2c3d69458, type: 2}
+  ChunkCoord: {x: 0, y: 0, z: 0}
+  ChunkWorldPosition: {x: 0, y: 0, z: 0}
 --- !u!4 &1615266615
 Transform:
   m_ObjectHideFlags: 0
@@ -341,7 +344,56 @@ Transform:
   m_GameObject: {fileID: 1615266613}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 31.569624, y: 29.168224, z: 30.240759}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &2104555789
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2104555791}
+  - component: {fileID: 2104555790}
+  m_Layer: 0
+  m_Name: ChunkManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &2104555790
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2104555789}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0f40a032fde50ad4c9706b046726f9e1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  chunkPrefab: {fileID: 7459184397080430676, guid: faffb00ef123fed4b868dbbe24797a78, type: 3}
+  chunkSize: 64
+  worldSizeX: 5
+  worldSizeY: 3
+  worldSizeZ: 5
+--- !u!4 &2104555791
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2104555789}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 39.91441, y: 33.043438, z: 43.791252}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -354,3 +406,4 @@ SceneRoots:
   - {fileID: 203844589}
   - {fileID: 1053290019}
   - {fileID: 1615266615}
+  - {fileID: 2104555791}

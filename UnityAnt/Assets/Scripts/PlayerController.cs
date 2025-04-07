@@ -7,7 +7,7 @@ public class PlayerController : MonoBehaviour
     public float flySpeed = 10f;
     public float digRadius = 2f;
     public MarchingCubesGPU marchingCubesGPU;// Reference to the VoxelTerrainGenerator
-
+    public ChunkManager chunkManager;
     private Rigidbody rb;
     private Camera playerCamera;
     private float rotationX = 0f;  // Variable to track vertical camera rotation
@@ -23,6 +23,10 @@ public class PlayerController : MonoBehaviour
         if (marchingCubesGPU == null)
         {
             marchingCubesGPU = FindFirstObjectByType<MarchingCubesGPU>();
+        }
+        if (chunkManager == null)
+        {
+            chunkManager = FindFirstObjectByType<ChunkManager>();
         }
     }
 
@@ -60,20 +64,37 @@ public class PlayerController : MonoBehaviour
         rb.linearVelocity = moveDirection * flySpeed;
     }
 
+    private float lastDigTime;
+    private float digCooldown = 0.2f;
     void DigAtMousePosition()
     {
-        Ray ray = playerCamera.ScreenPointToRay(Input.mousePosition);
 
-        if (marchingCubesGPU.RaycastVoxel(ray.origin, ray.direction, 100f, out Vector3 hitPos))
+        if (Time.time - lastDigTime < digCooldown) return;
+        lastDigTime = Time.time;
+
+        Ray ray = playerCamera.ScreenPointToRay(Input.mousePosition);
+        if (Physics.Raycast(ray, out RaycastHit hit, 100f))
         {
-            marchingCubesGPU.DigAt(hitPos, digRadius);
+            Vector3 safeHitPoint = hit.point - ray.direction * 0.01f;
+
+            MarchingCubesGPU chunk = chunkManager.GetChunkAtWorldPosition(safeHitPoint);
+            if (chunk != null)
+            {
+                GameObject marker = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                marker.transform.position = safeHitPoint;
+                marker.transform.localScale = Vector3.one * 0.5f;
+                marker.GetComponent<Renderer>().material.color = Color.red;
+                Destroy(marker, 3f);
+
+                chunkManager.DigAtWorldPosition(safeHitPoint, digRadius);
+                Debug.Log($"Digging at: {safeHitPoint} in chunk: {chunk.ChunkCoord}");
+            }
         }
         else
         {
-            Debug.Log("No solid voxel hit.");
+            Debug.Log("Nothing hit by Physics.Raycast.");
         }
     }
-
 
     void CameraMovement()
     {

@@ -13,10 +13,12 @@ float _DigRadius;
 [numthreads(8, 8, 8)]
 void CSMain(uint3 id : SV_DispatchThreadID)
 {
-    if (id.x >= _Width || id.y >= _Height || id.z >= _Depth)
+    uint DensityWidth = _Width;
+
+    if (id.x >= DensityWidth || id.y >= DensityWidth || id.z >= DensityWidth)
         return;
 
-    uint index = id.x + id.y * _Width + id.z * _Width * _Height;
+    uint index = id.x + id.y * DensityWidth + id.z * DensityWidth * DensityWidth;
     float3 voxelPos = float3(id.x, id.y, id.z);
 
     float dist = distance(voxelPos, _DigPosition);

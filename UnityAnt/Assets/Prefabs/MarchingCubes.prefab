@@ -51,3 +51,5 @@ MonoBehaviour:
   m_marchingCubes: {fileID: 7200000, guid: 714069d253d07644c9a216db5121af3c, type: 3}
   m_normals: {fileID: 7200000, guid: c88e189ad8c364b4babacbcbc47a3e86, type: 3}
   voxelMaterial: {fileID: 2100000, guid: 88a56eb15e281b247bbff7f2c3d69458, type: 2}
+  ChunkCoord: {x: 0, y: 0, z: 0}
+  ChunkWorldPosition: {x: 0, y: 0, z: 0}

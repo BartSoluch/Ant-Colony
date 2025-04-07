@@ -76,7 +76,7 @@ Material:
     - _MapScale: 1
     - _Metallic: 0
     - _SpecPower: 32
-    - _Tiling: 1
+    - _Tiling: 1.04
     m_Colors:
     - _Color: {r: 0, g: 1, b: 0.11850643, a: 1}
   m_BuildTextureStacks: []
