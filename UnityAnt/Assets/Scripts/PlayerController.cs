@@ -1,3 +1,4 @@
+using MarchingCubesGPUProject;
 using UnityEngine;
 
 public class PlayerController : MonoBehaviour
@@ -5,7 +6,7 @@ public class PlayerController : MonoBehaviour
     public float moveSpeed = 5f;
     public float flySpeed = 10f;
     public float digRadius = 2f;
-    public VoxelWorld voxelWorld;  // Reference to the VoxelTerrainGenerator
+    public MarchingCubesGPU marchingCubesGPU;// Reference to the VoxelTerrainGenerator
 
     private Rigidbody rb;
     private Camera playerCamera;
@@ -19,9 +20,9 @@ public class PlayerController : MonoBehaviour
         playerCamera = Camera.main;
 
         // Automatically assign the VoxelTerrainGenerator if not set in the Inspector
-        if (voxelWorld == null)
+        if (marchingCubesGPU == null)
         {
-            voxelWorld = FindFirstObjectByType<VoxelWorld>();
+            marchingCubesGPU = FindFirstObjectByType<MarchingCubesGPU>();
         }
     }
 
@@ -61,13 +62,6 @@ public class PlayerController : MonoBehaviour
 
     void DigAtMousePosition()
     {
-        // Check if voxelTerrainGenerator is null
-        if (voxelWorld == null)
-        {
-            Debug.LogError("VoxelTerrainGenerator is not assigned!");
-            return;
-        }
-
         // Raycasting to get the mouse position
         Ray ray = playerCamera.ScreenPointToRay(Input.mousePosition);
         RaycastHit hit;
@@ -81,7 +75,7 @@ public class PlayerController : MonoBehaviour
             Debug.Log($"Mouse clicked at position: {hitPosition}");
 
             // Call the Dig method to dig at the hit position
-            voxelWorld.Dig(hitPosition, digRadius);
+            FindFirstObjectByType<MarchingCubesGPU>().DigAt(hitPosition, digRadius);
         }
         else
         {

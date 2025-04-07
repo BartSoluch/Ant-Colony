@@ -1,10 +1,9 @@
 ﻿using UnityEngine;
 using UnityEngine.Rendering;
 using System.Collections.Generic;
+using ImprovedPerlinNoiseProject;
 
 #pragma warning disable 162
-
-using ImprovedPerlinNoiseProject;
 
 namespace MarchingCubesGPUProject
 {
@@ -19,6 +18,8 @@ namespace MarchingCubesGPUProject
         const int SIZE = N * N * N * 3 * 5;
 
         public int m_seed = 0;
+
+        public ComputeShader m_digShader; // Assign this in the Inspector
 
         public Material m_drawBuffer;
 
@@ -36,6 +37,11 @@ namespace MarchingCubesGPUProject
 
         GPUPerlinNoise perlin;
 
+        ComputeBuffer m_vertexCountBuffer;
+        int[] vertexCountArray = new int[1]; // just holds one int
+        int m_actualVertexCount = 0;         // stores the live count for drawing
+        int vertexIndex = 0;                // Keeps track of where in the buffer the next vertex should go
+
         void Start()
         {
             Debug.Log("Marching Cubes GPU: Start() called");
@@ -52,12 +58,9 @@ namespace MarchingCubesGPUProject
             m_normalsBuffer.volumeDepth = N;
             m_normalsBuffer.Create();
 
-            m_meshBuffer = new ComputeBuffer(SIZE, sizeof(float) * 7);
-
-            float[] val = new float[SIZE * 7];
-            for (int i = 0; i < SIZE * 7; i++)
-                val[i] = -1.0f;
-            m_meshBuffer.SetData(val);
+            // Change to StructuredBuffer
+            m_meshBuffer = new ComputeBuffer(SIZE, sizeof(float) * 7, ComputeBufferType.Default);  // No Append, use Default
+            m_vertexCountBuffer = new ComputeBuffer(1, sizeof(int), ComputeBufferType.Raw);
 
             m_cubeEdgeFlags = new ComputeBuffer(256, sizeof(int));
             m_cubeEdgeFlags.SetData(MarchingCubesTables.CubeEdgeFlags);
@@ -65,8 +68,14 @@ namespace MarchingCubesGPUProject
             m_triangleConnectionTable = new ComputeBuffer(256 * 16, sizeof(int));
             m_triangleConnectionTable.SetData(MarchingCubesTables.TriangleConnectionTable);
 
-            // --- FLAT TERRAIN SETUP ---
             float[] flatDensity = new float[N * N * N];
+            float frequency = 0.02f;
+            float heightScale = N * 0.2f;
+
+            Random.InitState(m_seed);
+            float offsetX = Random.Range(0f, 1000f);
+            float offsetZ = Random.Range(0f, 1000f);
+
             for (int z = 0; z < N; z++)
             {
                 for (int y = 0; y < N; y++)
@@ -74,141 +83,172 @@ namespace MarchingCubesGPUProject
                     for (int x = 0; x < N; x++)
                     {
                         int i = x + y * N + z * N * N;
-                        flatDensity[i] = Mathf.PerlinNoise(x * 0.1f, z * 0.1f) > 0.5f ? 1.0f : -1.0f;  // Use Perlin noise for better terrain
+                        float perlin = Mathf.PerlinNoise(x * frequency + offsetX, z * frequency + offsetZ);
+                        float height = perlin * heightScale + (N * 0.3f);
+                        flatDensity[i] = height - y;
                     }
                 }
             }
+
             m_noiseBuffer.SetData(flatDensity);
-
-            // --- NORMALS ---
-            m_normals.SetInt("_Width", N);
-            m_normals.SetInt("_Height", N);
-            m_normals.SetBuffer(0, "_Noise", m_noiseBuffer);
-            m_normals.SetTexture(0, "_Result", m_normalsBuffer);
-            m_normals.Dispatch(0, N / 8, N / 8, N / 8);
-            Debug.Log("Normals.compute dispatched");
-
-
-            // --- MARCHING CUBES ---
-            m_marchingCubes.SetInt("_Width", N);
-            m_marchingCubes.SetInt("_Height", N);
-            m_marchingCubes.SetInt("_Depth", N);
-            m_marchingCubes.SetInt("_Border", 1);
-            m_marchingCubes.SetFloat("_Target", 0.0f);
-            m_marchingCubes.SetBuffer(0, "_Voxels", m_noiseBuffer);
-            m_marchingCubes.SetTexture(0, "_Normals", m_normalsBuffer);
-            m_marchingCubes.SetBuffer(0, "_Buffer", m_meshBuffer);
-            m_marchingCubes.SetBuffer(0, "_CubeEdgeFlags", m_cubeEdgeFlags);
-            m_marchingCubes.SetBuffer(0, "_TriangleConnectionTable", m_triangleConnectionTable);
-            m_marchingCubes.Dispatch(0, N / 8, N / 8, N / 8);
+            m_vertexCountBuffer.SetData(new int[] { 0 });
+            DispatchNormals();
+            DispatchMesh();
 
             Debug.Log("Marching Cubes GPU: Dispatched all shaders");
 
+            // Get the vertices back
+            Vert[] verts = new Vert[m_actualVertexCount];
+            m_meshBuffer.GetData(verts, 0, 0, m_actualVertexCount);
+
+            for (int i = 0; i < Mathf.Min(30, verts.Length); i += 3)
+            {
+                Debug.Log($"Triangle {i / 3}:");
+                Debug.Log($"  A: {verts[i].position}");
+                Debug.Log($"  B: {verts[i + 1].position}");
+                Debug.Log($"  C: {verts[i + 2].position}");
+            }
         }
 
+        void Update() { }
 
-        void Update()
-        {
-
-        }
-
-        /// <summary>
-        /// Draws the mesh.
-        /// </summary>
-        /// <param name="camera"></param>
+        // Draws the mesh
         void OnRenderObject()
         {
-            //Since mesh is in a buffer need to use DrawProcedual called from OnPostRender
-            m_drawBuffer.SetBuffer("_Buffer", m_meshBuffer);
-            m_drawBuffer.SetPass(0);
-
-            Graphics.DrawProceduralNow(MeshTopology.Triangles, SIZE);
+            if (m_actualVertexCount > 0)
+            {
+                m_drawBuffer.SetBuffer("_Buffer", m_meshBuffer);
+                m_drawBuffer.SetPass(0);
+                Graphics.DrawProceduralNow(MeshTopology.Triangles, m_actualVertexCount);
+            }
         }
 
         void OnDestroy()
         {
-            //MUST release buffers.
             m_noiseBuffer.Release();
             m_meshBuffer.Release();
             m_cubeEdgeFlags.Release();
             m_triangleConnectionTable.Release();
             m_normalsBuffer.Release();
+            m_vertexCountBuffer?.Release();
         }
 
         struct Vert
         {
             public Vector4 position;
             public Vector3 normal;
-        };
+        }
 
         /// <summary>
         /// Reads back the mesh data from the GPU and turns it into a standard unity mesh.
         /// </summary>
         /// <returns></returns>
-        List<GameObject> ReadBackMesh(ComputeBuffer meshBuffer)
+        GameObject ReadBackMesh()
         {
-            //Get the data out of the buffer.
-            Vert[] verts = new Vert[SIZE];
-            meshBuffer.GetData(verts);
+            Vert[] verts = new Vert[m_actualVertexCount];
+            m_meshBuffer.GetData(verts, 0, 0, m_actualVertexCount);
 
-            //Extract the positions, normals and indexes.
             List<Vector3> positions = new List<Vector3>();
             List<Vector3> normals = new List<Vector3>();
             List<int> index = new List<int>();
 
-            List<GameObject> objects = new List<GameObject>();
-
-            int idx = 0;
-            for (int i = 0; i < SIZE; i++)
+            for (int i = 0; i < verts.Length; i++)
             {
-                //If the marching cubes generated a vert for this index
-                //then the position w value will be 1, not -1.
-                if (verts[i].position.w != -1)
-                {
-                    positions.Add(verts[i].position);
-                    normals.Add(verts[i].normal);
-                    index.Add(idx++);
-                }
-
-                int maxTriangles = 65000 / 3;
-
-                if(idx >= maxTriangles)
-                {
-                    objects.Add(MakeGameObject(positions, normals, index));
-                    idx = 0;
-                    positions.Clear();
-                    normals.Clear();
-                    index.Clear();
-                }
+                positions.Add(verts[i].position);
+                normals.Add(verts[i].normal);
+                index.Add(i);
             }
 
-            return objects;
-        }
+            GameObject physicsMeshObject = new GameObject("PhysicsMesh");
+            physicsMeshObject.transform.parent = transform;
+            physicsMeshObject.transform.localPosition = Vector3.zero;
+            physicsMeshObject.AddComponent<MeshFilter>();
+            physicsMeshObject.AddComponent<MeshRenderer>().enabled = false;
+            physicsMeshObject.AddComponent<MeshCollider>();
 
-        GameObject MakeGameObject(List<Vector3> positions, List<Vector3> normals, List<int> index)
-        {
             Mesh mesh = new Mesh();
+            mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
             mesh.vertices = positions.ToArray();
             mesh.normals = normals.ToArray();
             mesh.bounds = new Bounds(new Vector3(0, N / 2, 0), new Vector3(N, N, N));
             mesh.SetTriangles(index.ToArray(), 0);
 
-            GameObject go = new GameObject("Voxel Mesh");
-            go.AddComponent<MeshFilter>();
-            go.AddComponent<MeshRenderer>();
-            go.GetComponent<Renderer>().material = new Material(Shader.Find("Standard"));
-            go.GetComponent<MeshFilter>().mesh = mesh;
-            go.isStatic = true;
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            mesh.Optimize();
 
-            MeshCollider collider = go.AddComponent<MeshCollider>();
+            physicsMeshObject.GetComponent<MeshFilter>().mesh = mesh;
+
+            MeshCollider collider = physicsMeshObject.GetComponent<MeshCollider>();
+            collider.sharedMesh = null;
             collider.sharedMesh = mesh;
 
-            go.transform.parent = transform;
+            physicsMeshObject.GetComponent<MeshRenderer>().enabled = true;
+            physicsMeshObject.GetComponent<Renderer>().material = new Material(Shader.Find("Standard"));
 
-            //Draw mesh next too the one draw procedurally.
-            go.transform.localPosition = new Vector3(N + 2, 0, 0);
-
-            return go;
+            return physicsMeshObject;
         }
+
+        public void DigAt(Vector3 worldPos, float radius)
+        {
+            Vector3 local = worldPos - transform.position;
+            Vector3Int idPos = Vector3Int.FloorToInt(local);
+            idPos = Vector3Int.Max(Vector3Int.zero, Vector3Int.Min(idPos, new Vector3Int(N - 1, N - 1, N - 1)));
+
+            Debug.Log($"Digging at voxel index: {idPos}");
+
+            // Run compute shader to edit the voxel buffer
+            int kernel = m_digShader.FindKernel("CSMain");
+            m_digShader.SetInt("_Width", N);
+            m_digShader.SetInt("_Height", N);
+            m_digShader.SetInt("_Depth", N);
+            m_digShader.SetVector("_DigPosition", new Vector3(idPos.x, idPos.y, idPos.z));
+            m_digShader.SetFloat("_DigRadius", radius);
+            m_digShader.SetBuffer(kernel, "_Noise", m_noiseBuffer);
+            m_digShader.Dispatch(kernel, N / 8, N / 8, N / 8);
+
+            // Rebuild mesh and normals
+            DispatchNormals();
+            DispatchMesh();
+            ReadBackMesh();
+        }
+
+        void DispatchNormals()
+        {
+            m_normals.SetInt("_Width", N);
+            m_normals.SetInt("_Height", N);
+            m_normals.SetBuffer(0, "_Noise", m_noiseBuffer);
+            m_normals.SetTexture(0, "_Result", m_normalsBuffer);
+            m_normals.Dispatch(0, N / 8, N / 8, N / 8);
+        }
+
+        void DispatchMesh()
+        {
+            m_vertexCountBuffer.SetData(new int[] { 0 });
+
+            int kernel = m_marchingCubes.FindKernel("CSMain");
+
+            m_marchingCubes.SetInt("_Width", N);
+            m_marchingCubes.SetInt("_Height", N);
+            m_marchingCubes.SetInt("_Depth", N);
+            m_marchingCubes.SetInt("_Border", 1);
+            m_marchingCubes.SetFloat("_Target", 0.0f);
+
+            m_marchingCubes.SetBuffer(kernel, "_Voxels", m_noiseBuffer);
+            m_marchingCubes.SetTexture(kernel, "_Normals", m_normalsBuffer);
+            m_marchingCubes.SetBuffer(kernel, "_Buffer", m_meshBuffer);
+            m_marchingCubes.SetBuffer(kernel, "_CubeEdgeFlags", m_cubeEdgeFlags);
+            m_marchingCubes.SetBuffer(kernel, "_TriangleConnectionTable", m_triangleConnectionTable);
+            m_marchingCubes.SetBuffer(kernel, "_VertexIndexBuffer", m_vertexCountBuffer);
+
+            m_marchingCubes.Dispatch(kernel, N / 8, N / 8, N / 8);
+
+            int[] count = new int[1];
+            m_vertexCountBuffer.GetData(count);
+            m_actualVertexCount = count[0];
+
+            Debug.Log($"[GPU Draw] Vertex Count: {m_actualVertexCount}");
+        }
+
     }
 }
