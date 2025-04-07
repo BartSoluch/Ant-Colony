@@ -37,6 +37,10 @@ namespace MarchingCubesGPUProject
 
         GPUPerlinNoise perlin;
 
+        [SerializeField] private Material voxelMaterial;
+
+        private GameObject currentColliderMesh;
+
         ComputeBuffer m_vertexCountBuffer;
         int[] vertexCountArray = new int[1]; // just holds one int
         int m_actualVertexCount = 0;         // stores the live count for drawing
@@ -94,6 +98,9 @@ namespace MarchingCubesGPUProject
             m_vertexCountBuffer.SetData(new int[] { 0 });
             DispatchNormals();
             DispatchMesh();
+            GameObject colliderMesh = ReadBackMesh();
+            colliderMesh.GetComponent<Renderer>().enabled = false; // hide it
+
 
             Debug.Log("Marching Cubes GPU: Dispatched all shaders");
 
@@ -156,8 +163,16 @@ namespace MarchingCubesGPUProject
             {
                 positions.Add(verts[i].position);
                 normals.Add(verts[i].normal);
-                index.Add(i);
             }
+
+            // Flip winding for every triangle (group of 3)
+            for (int i = 0; i < verts.Length; i += 3)
+            {
+                index.Add(i + 2); // C
+                index.Add(i + 1); // B
+                index.Add(i);     // A
+            }
+
 
             GameObject physicsMeshObject = new GameObject("PhysicsMesh");
             physicsMeshObject.transform.parent = transform;
@@ -184,7 +199,7 @@ namespace MarchingCubesGPUProject
             collider.sharedMesh = mesh;
 
             physicsMeshObject.GetComponent<MeshRenderer>().enabled = true;
-            physicsMeshObject.GetComponent<Renderer>().material = new Material(Shader.Find("Standard"));
+            physicsMeshObject.GetComponent<Renderer>().material = voxelMaterial;
 
             return physicsMeshObject;
         }
@@ -197,7 +212,6 @@ namespace MarchingCubesGPUProject
 
             Debug.Log($"Digging at voxel index: {idPos}");
 
-            // Run compute shader to edit the voxel buffer
             int kernel = m_digShader.FindKernel("CSMain");
             m_digShader.SetInt("_Width", N);
             m_digShader.SetInt("_Height", N);
@@ -207,10 +221,50 @@ namespace MarchingCubesGPUProject
             m_digShader.SetBuffer(kernel, "_Noise", m_noiseBuffer);
             m_digShader.Dispatch(kernel, N / 8, N / 8, N / 8);
 
-            // Rebuild mesh and normals
             DispatchNormals();
             DispatchMesh();
-            ReadBackMesh();
+
+            if (currentColliderMesh != null)
+                Destroy(currentColliderMesh);
+
+            currentColliderMesh = ReadBackMesh();
+            currentColliderMesh.GetComponent<Renderer>().enabled = false;
+        }
+
+        public float SampleDensity(Vector3Int voxelIndex)
+        {
+            if (voxelIndex.x < 0 || voxelIndex.y < 0 || voxelIndex.z < 0 ||
+                voxelIndex.x >= N || voxelIndex.y >= N || voxelIndex.z >= N)
+                return float.MinValue;
+
+            float[] result = new float[1];
+            int i = voxelIndex.x + voxelIndex.y * N + voxelIndex.z * N * N;
+            ComputeBuffer readback = new ComputeBuffer(1, sizeof(float));
+            m_noiseBuffer.GetData(result, 0, i, 1);
+            readback.Release();
+            return result[0];
+        }
+        public bool RaycastVoxel(Vector3 rayOrigin, Vector3 rayDirection, float maxDistance, out Vector3 hitPos)
+        {
+            float stepSize = 0.5f;
+            Vector3 pos = rayOrigin;
+
+            for (float t = 0; t < maxDistance; t += stepSize)
+            {
+                Vector3 samplePos = pos + rayDirection * t;
+                Vector3 local = samplePos - transform.position;
+                Vector3Int voxelIndex = Vector3Int.FloorToInt(local);
+
+                float density = SampleDensity(voxelIndex);
+                if (density > 0.0f) // Adjust threshold if needed
+                {
+                    hitPos = transform.position + voxelIndex;
+                    return true;
+                }
+            }
+
+            hitPos = Vector3.zero;
+            return false;
         }
 
         void DispatchNormals()

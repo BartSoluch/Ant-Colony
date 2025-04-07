@@ -1,0 +1,53 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &7459184397080430676
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 7415506537724803946}
+  - component: {fileID: 8586363753335197134}
+  m_Layer: 0
+  m_Name: MarchingCubes
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &7415506537724803946
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7459184397080430676}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &8586363753335197134
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7459184397080430676}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6404f20b05dc14540b025bb6ccb784e9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_seed: 0
+  m_digShader: {fileID: 7200000, guid: 418c4a3b4787f5c4d84fa37a55904a24, type: 3}
+  m_drawBuffer: {fileID: 2100000, guid: 88a56eb15e281b247bbff7f2c3d69458, type: 2}
+  m_perlinNoise: {fileID: 7200000, guid: a1a0c08741b74c54988d6ce3ef373c70, type: 3}
+  m_marchingCubes: {fileID: 7200000, guid: 714069d253d07644c9a216db5121af3c, type: 3}
+  m_normals: {fileID: 7200000, guid: c88e189ad8c364b4babacbcbc47a3e86, type: 3}
+  voxelMaterial: {fileID: 2100000, guid: 88a56eb15e281b247bbff7f2c3d69458, type: 2}

@@ -62,26 +62,18 @@ public class PlayerController : MonoBehaviour
 
     void DigAtMousePosition()
     {
-        // Raycasting to get the mouse position
         Ray ray = playerCamera.ScreenPointToRay(Input.mousePosition);
-        RaycastHit hit;
 
-        if (Physics.Raycast(ray, out hit))
+        if (marchingCubesGPU.RaycastVoxel(ray.origin, ray.direction, 100f, out Vector3 hitPos))
         {
-            // Get the position where the mouse is pointing at
-            Vector3 hitPosition = hit.point;
-
-            // Log the hit position
-            Debug.Log($"Mouse clicked at position: {hitPosition}");
-
-            // Call the Dig method to dig at the hit position
-            FindFirstObjectByType<MarchingCubesGPU>().DigAt(hitPosition, digRadius);
+            marchingCubesGPU.DigAt(hitPos, digRadius);
         }
         else
         {
-            Debug.Log("Raycast did not hit anything.");
+            Debug.Log("No solid voxel hit.");
         }
     }
+
 
     void CameraMovement()
     {
