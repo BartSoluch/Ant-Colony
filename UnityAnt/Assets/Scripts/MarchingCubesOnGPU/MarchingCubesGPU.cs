@@ -2,7 +2,6 @@
 using UnityEngine.Rendering;
 using System.Collections.Generic;
 using ImprovedPerlinNoiseProject;
-using UnityEngine.UIElements;
 
 #pragma warning disable 162
 
@@ -10,46 +9,30 @@ namespace MarchingCubesGPUProject
 {
     public class MarchingCubesGPU : MonoBehaviour
     {
-        //The size of the voxel array for each dimension
-        const int N = 64;
-        const int P = 1; // padding
-
-        //The size of the buffer that holds the verts.
-        //This is the maximum number of verts that the 
-        //marching cube can produce, 5 triangles for each voxel.
+        public const int N = 64;
+        const int P = 1;  // padding
         const int SIZE = N * N * N * 3 * 5;
 
         public int m_seed = 0;
-
-        public ComputeShader m_digShader; // Assign this in the Inspector
-
+        public ComputeShader m_digShader;
         public Material m_drawBuffer;
-
         public ComputeShader m_perlinNoise;
-
         public ComputeShader m_marchingCubes;
-
         public ComputeShader m_normals;
 
         ComputeBuffer m_noiseBuffer, m_meshBuffer;
-
+        // The normals buffer is now provided externally.
         RenderTexture m_normalsBuffer;
 
         ComputeBuffer m_cubeEdgeFlags, m_triangleConnectionTable;
-
-        GPUPerlinNoise perlin;
-
         [SerializeField] private Material voxelMaterial;
-
-        public Vector3Int ChunkCoord; // Assigned by ChunkManager
-
-        public Vector3 ChunkWorldPosition; // Assigned by ChunkManager
-
-        private GameObject currentColliderMesh;
+        public Vector3Int ChunkCoord;
+        public Vector3 ChunkWorldPosition;
 
         ComputeBuffer m_vertexCountBuffer;
-        int[] vertexCountArray = new int[1]; // just holds one int
-        int m_actualVertexCount = 0;         // stores the live count for drawing
+        int m_actualVertexCount = 0;
+
+        public ChunkManager chunkManager;
 
         void Start()
         {
@@ -62,15 +45,8 @@ namespace MarchingCubesGPUProject
             int voxelCount = densityWidth * densityWidth * densityWidth;
             m_noiseBuffer = new ComputeBuffer(voxelCount, sizeof(float));
 
-            m_normalsBuffer = new RenderTexture(N, N, 0, RenderTextureFormat.ARGBHalf, RenderTextureReadWrite.Linear);
-            m_normalsBuffer.dimension = TextureDimension.Tex3D;
-            m_normalsBuffer.enableRandomWrite = true;
-            m_normalsBuffer.useMipMap = false;
-            m_normalsBuffer.volumeDepth = N;
-            m_normalsBuffer.Create();
-
-            // Change to StructuredBuffer
-            m_meshBuffer = new ComputeBuffer(SIZE, sizeof(float) * 7, ComputeBufferType.Default);  // No Append, use Default
+            // Do not create a normals RenderTexture here – it is assigned by the manager!
+            m_meshBuffer = new ComputeBuffer(SIZE, sizeof(float) * 7, ComputeBufferType.Default);
             m_vertexCountBuffer = new ComputeBuffer(1, sizeof(int), ComputeBufferType.Raw);
 
             m_cubeEdgeFlags = new ComputeBuffer(256, sizeof(int));
@@ -79,7 +55,8 @@ namespace MarchingCubesGPUProject
             m_triangleConnectionTable = new ComputeBuffer(256 * 16, sizeof(int));
             m_triangleConnectionTable.SetData(MarchingCubesTables.TriangleConnectionTable);
 
-            float[] flatDensity = new float[densityWidth * densityWidth * densityWidth];
+            // Initialize the flat density array
+            float[] flatDensity = new float[voxelCount];
             float frequency = 0.02f;
             float heightScale = N * 0.2f;
 
@@ -108,28 +85,23 @@ namespace MarchingCubesGPUProject
             m_vertexCountBuffer.SetData(new int[] { 0 });
             DispatchNormals();
             DispatchMesh();
-            GameObject colliderMesh = ReadBackMesh();
-            colliderMesh.GetComponent<Renderer>().enabled = false; // hide it
-
 
             Debug.Log("Marching Cubes GPU: Dispatched all shaders");
+        }
 
-            // Get the vertices back
-            Vert[] verts = new Vert[m_actualVertexCount];
-            m_meshBuffer.GetData(verts, 0, 0, m_actualVertexCount);
+        // This method is called by the manager to assign the normals RenderTexture.
+        public void SetNormalsBuffer(RenderTexture sharedBuffer)
+        {
+            m_normalsBuffer = sharedBuffer;
+        }
 
-            for (int i = 0; i < Mathf.Min(30, verts.Length); i += 3)
-            {
-                Debug.Log($"Triangle {i / 3}:");
-                Debug.Log($"  A: {verts[i].position}");
-                Debug.Log($"  B: {verts[i + 1].position}");
-                Debug.Log($"  C: {verts[i + 2].position}");
-            }
+        public void SetChunkManager(ChunkManager manager)
+        {
+            chunkManager = manager;
         }
 
         void Update() { }
 
-        // Draws the mesh
         void OnRenderObject()
         {
             if (m_actualVertexCount > 0)
@@ -146,7 +118,7 @@ namespace MarchingCubesGPUProject
             m_meshBuffer.Release();
             m_cubeEdgeFlags.Release();
             m_triangleConnectionTable.Release();
-            m_normalsBuffer.Release();
+            // Do not release m_normalsBuffer here because it is managed externally.
             m_vertexCountBuffer?.Release();
         }
 
@@ -155,159 +127,73 @@ namespace MarchingCubesGPUProject
             public Vector4 position;
             public Vector3 normal;
         }
-
-        /// <summary>
-        /// Reads back the mesh data from the GPU and turns it into a standard unity mesh.
-        /// </summary>
-        /// <returns></returns>
-        GameObject ReadBackMesh()
+        public void ApplyDigAtLocal(Vector3 local, float radius)
         {
-            GenerateMeshData(out var positions, out var normals, out var index);
+            // Clamp the radius (if you wish)
+            float maxDigRadius = 10.0f;
+            radius = Mathf.Min(radius, maxDigRadius);
 
-            GameObject physicsMeshObject = new GameObject("PhysicsMesh");
-            physicsMeshObject.transform.SetParent(transform);
-            physicsMeshObject.transform.localPosition = -ChunkWorldPosition;
-            physicsMeshObject.AddComponent<MeshFilter>();
-            physicsMeshObject.AddComponent<MeshRenderer>().enabled = true;
-            physicsMeshObject.GetComponent<Renderer>().material.color = Color.red;
-            physicsMeshObject.AddComponent<MeshCollider>();
-
-            Mesh mesh = new Mesh();
-            mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
-            mesh.vertices = positions.ToArray();
-            mesh.normals = normals.ToArray();
-            mesh.bounds = new Bounds(new Vector3(0, N / 2, 0), new Vector3(N, N, N));
-            mesh.SetTriangles(index.ToArray(), 0);
-
-            mesh.RecalculateNormals();
-            mesh.RecalculateBounds();
-            mesh.Optimize();
-
-            physicsMeshObject.GetComponent<MeshFilter>().mesh = mesh;
-
-            MeshCollider collider = physicsMeshObject.GetComponent<MeshCollider>();
-            collider.sharedMesh = null;
-            collider.sharedMesh = mesh;
-
-            physicsMeshObject.GetComponent<MeshRenderer>().enabled = true;
-            physicsMeshObject.GetComponent<Renderer>().material = voxelMaterial;
-
-            return physicsMeshObject;
-        }
-
-
-        public void DigAtLocal(Vector3 local, float radius)
-        {
-            Vector3Int idPos = Vector3Int.FloorToInt(local);
-            int paddedWidth = N + 1 + P * 2;
-            idPos = Vector3Int.Max(Vector3Int.zero, Vector3Int.Min(idPos, new Vector3Int(N - 1, N - 1, N - 1)));
-
-            Debug.Log($"Digging at voxel index: {idPos} (local: {local})");
-
+            // Find the kernel for the dig compute shader.
             int kernel = m_digShader.FindKernel("CSMain");
-            m_digShader.SetInt("_Width", paddedWidth);
-            m_digShader.SetInt("_Height", paddedWidth);
-            m_digShader.SetInt("_Depth", paddedWidth);
 
-            m_digShader.SetVector("_DigPosition", local); // ✅ full float position!
+            // Set the dig parameters. Note that the compute shader expects local coordinates.
             m_digShader.SetFloat("_DigRadius", radius);
+            m_digShader.SetVector("_DigPosition", local);
+
+            // Pass our density/noise buffer.
             m_digShader.SetBuffer(kernel, "_Noise", m_noiseBuffer);
-            m_digShader.Dispatch(kernel, N / 8, N / 8, N / 8);
 
-            if (m_noiseBuffer == null || m_digShader == null)
-            {
-                Debug.LogError("Dig shader or noise buffer is null!");
-                return;
-            }
+            // Calculate thread groups based on the padded width of the noise buffer.
+            int paddedWidth = N + 1 + P * 2;
+            int groups = Mathf.CeilToInt((float)paddedWidth / 8f);
+            m_digShader.Dispatch(kernel, groups, groups, groups);
 
-            DispatchNormals();
-            DispatchMesh();
-
-            if (currentColliderMesh == null)
-                currentColliderMesh = ReadBackMesh();
-            else
-                UpdateColliderMesh(currentColliderMesh);
-
-            currentColliderMesh.GetComponent<Renderer>().enabled = false;
+            // After modifying the density, update normals and remesh.
+            Remesh();
         }
 
-        public float SampleDensity(Vector3Int voxelIndex)
+        public bool RaymarchDig(Vector3 rayOrigin, Vector3 rayDir, float maxDistance, out Vector3 hitPos)
         {
-            int densityWidth = N + 1;
-            if (voxelIndex.x < 0 || voxelIndex.y < 0 || voxelIndex.z < 0 ||
-                voxelIndex.x >= N + 1 || voxelIndex.y >= N + 1 || voxelIndex.z >= N + 1)
-                return float.MinValue;
+            ComputeBuffer outBuffer = new ComputeBuffer(1, sizeof(float));
+            outBuffer.SetData(new float[] { -1f });
+
+            int kernel = m_digShader.FindKernel("Raymarch");
+            int padded = N + 1 + P * 2;
+
+            m_digShader.SetInt("_Width", padded);
+            m_digShader.SetInt("_Height", padded);
+            m_digShader.SetInt("_Depth", padded);
+            m_digShader.SetFloat("_MaxDistance", maxDistance);
+            m_digShader.SetVector("_RayOrigin", rayOrigin - ChunkWorldPosition);
+            m_digShader.SetVector("_RayDirection", rayDir);
+            m_digShader.SetBuffer(kernel, "_Voxels", m_noiseBuffer);
+            m_digShader.SetBuffer(kernel, "_VoxelOut", outBuffer);
+
+            m_digShader.Dispatch(kernel, 1, 1, 1);
 
             float[] result = new float[1];
-            int i = voxelIndex.x + voxelIndex.y * densityWidth + voxelIndex.z * densityWidth * densityWidth;
-            ComputeBuffer readback = new ComputeBuffer(1, sizeof(float));
-            m_noiseBuffer.GetData(result, 0, i, 1);
-            readback.Release();
-            return result[0];
-        }
-        public bool RaycastVoxel(Vector3 rayOrigin, Vector3 rayDirection, float maxDistance, out Vector3 hitPos)
-        {
-            float stepSize = 0.5f;
-            for (float t = 0; t < maxDistance; t += stepSize)
-            {
-                Vector3 samplePos = rayOrigin + rayDirection * t;
-                // Use the voxel grid’s origin (_ChunkWorldPosition) here:
-                Vector3 local = samplePos - ChunkWorldPosition;
-                Vector3Int voxelIndex = Vector3Int.FloorToInt(local);
+            outBuffer.GetData(result);
+            outBuffer.Release();
 
-                float density = SampleDensity(voxelIndex);
-                Debug.Log($"[RaycastVoxel] t={t:F2}, local={local}, index={voxelIndex}, density={density}");
-                if (density > 0.0f)
-                {
-                    hitPos = samplePos;
-                    Debug.Log($"[Hit] Voxel at {voxelIndex} with density {density}");
-                    return true;
-                }
+            if (result[0] > 0)
+            {
+                hitPos = rayOrigin + rayDir * result[0];
+                return true;
             }
-            hitPos = Vector3.zero;
-            return false;
-        }
-        void UpdateColliderMesh(GameObject meshObj)
-        {
-            GenerateMeshData(out var positions, out var normals, out var index);
-
-            Mesh mesh = new Mesh();
-            mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
-            mesh.vertices = positions.ToArray();
-            mesh.normals = normals.ToArray();
-            mesh.SetTriangles(index.ToArray(), 0);
-            mesh.RecalculateNormals();
-            mesh.RecalculateBounds();
-
-            meshObj.GetComponent<MeshFilter>().mesh = mesh;
-
-            var collider = meshObj.GetComponent<MeshCollider>();
-            collider.sharedMesh = null;
-            collider.sharedMesh = mesh;
-        }
-
-        private void GenerateMeshData(out List<Vector3> positions, out List<Vector3> normals, out List<int> index)
-        {
-            Vert[] verts = new Vert[m_actualVertexCount];
-            m_meshBuffer.GetData(verts, 0, 0, m_actualVertexCount);
-
-            positions = new List<Vector3>();
-            normals = new List<Vector3>();
-            index = new List<int>();
-
-            for (int i = 0; i < verts.Length; i++)
+            else
             {
-                positions.Add(verts[i].position);
-                normals.Add(verts[i].normal);
-            }
-
-            for (int i = 0; i < verts.Length; i += 3)
-            {
-                index.Add(i + 2);
-                index.Add(i + 1);
-                index.Add(i);
+                hitPos = Vector3.zero;
+                return false;
             }
         }
+
+        public void DigAtWorldPosition(Vector3 worldPos, float radius)
+        {
+            // This method is called externally to dig at a given world position.
+            // It simply calls the per-chunk update.
+            ApplyDigAtLocal(worldPos - ChunkWorldPosition, radius);
+        }
+
         public void Remesh()
         {
             DispatchNormals();
@@ -329,12 +215,10 @@ namespace MarchingCubesGPUProject
             m_vertexCountBuffer.SetData(new int[] { 0 });
 
             int kernel = m_marchingCubes.FindKernel("CSMain");
-
             int paddedWidth = N + 1 + P * 2;
             m_marchingCubes.SetInt("_Width", paddedWidth);
             m_marchingCubes.SetInt("_Height", paddedWidth);
             m_marchingCubes.SetInt("_Depth", paddedWidth);
-
             m_marchingCubes.SetInt("_Border", 1);
             m_marchingCubes.SetFloat("_Target", 0.0f);
 
@@ -344,7 +228,6 @@ namespace MarchingCubesGPUProject
             m_marchingCubes.SetBuffer(kernel, "_CubeEdgeFlags", m_cubeEdgeFlags);
             m_marchingCubes.SetBuffer(kernel, "_TriangleConnectionTable", m_triangleConnectionTable);
             m_marchingCubes.SetBuffer(kernel, "_VertexIndexBuffer", m_vertexCountBuffer);
-
             m_marchingCubes.SetVector("_ChunkWorldPosition", ChunkWorldPosition);
 
             m_marchingCubes.Dispatch(kernel, N / 8, N / 8, N / 8);
@@ -356,5 +239,29 @@ namespace MarchingCubesGPUProject
             Debug.Log($"[GPU Draw] Vertex Count: {m_actualVertexCount}");
         }
 
+        public void CopyBorderFrom(MarchingCubesGPU other, int faceAxis, int sourceCoord, int targetCoord)
+        {
+            int kernel = m_digShader.FindKernel("CopyBorder");
+            int paddedWidth = N + 1 + P * 2;
+
+            m_digShader.SetInt("_PaddedWidth", paddedWidth);
+            m_digShader.SetInt("_FaceAxis", faceAxis);
+            m_digShader.SetInt("_SourceCoord", sourceCoord + P);
+            m_digShader.SetInt("_TargetCoord", targetCoord + P);
+
+            m_digShader.SetBuffer(kernel, "_SourceVoxels", other.m_noiseBuffer);
+            m_digShader.SetBuffer(kernel, "_TargetVoxels", this.m_noiseBuffer);
+
+            Vector3Int dispatchDims = faceAxis switch
+            {
+                0 => new Vector3Int(1, paddedWidth / 8, paddedWidth / 8),
+                1 => new Vector3Int(paddedWidth / 8, 1, paddedWidth / 8),
+                _ => new Vector3Int(paddedWidth / 8, paddedWidth / 8, 1),
+            };
+
+            m_digShader.Dispatch(kernel, dispatchDims.x, dispatchDims.y, dispatchDims.z);
+
+            Debug.Log($"[CopyBorderFrom] From: {other.ChunkCoord} → {ChunkCoord}, axis: {faceAxis}, source: {sourceCoord}, target: {targetCoord}");
+        }
     }
 }

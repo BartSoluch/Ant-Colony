@@ -123,19 +123,3 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 	_Result[id.x + id.y * _Width + id.z * _Width * _Height] = n;
 
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

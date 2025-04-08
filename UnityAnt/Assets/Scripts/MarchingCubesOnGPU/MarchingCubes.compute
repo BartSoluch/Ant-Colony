@@ -45,7 +45,7 @@ static const int EdgeVertexMap[12][2] =
 [numthreads(8, 8, 8)]
 void CSMain(uint3 id : SV_DispatchThreadID)
 {
-    if (id.x >= (_Width - 1 - P * 2) || id.y >= (_Height - 1 - P * 2) || id.z >= (_Depth - 1 - P * 2))
+    if (id.x >= (_Width - 1 - P) || id.y >= (_Height - 1 - P) || id.z >= (_Depth - 1 - P))
         return;
 
     float values[8];

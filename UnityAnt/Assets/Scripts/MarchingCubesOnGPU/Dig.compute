@@ -1,5 +1,6 @@
-// Dig.compute
 #pragma kernel CSMain
+#define P 1
+#define N 64  // Match value from MarchingCubesGPU
 
 RWStructuredBuffer<float> _Noise;
 
@@ -13,13 +14,13 @@ float _DigRadius;
 [numthreads(8, 8, 8)]
 void CSMain(uint3 id : SV_DispatchThreadID)
 {
-    uint DensityWidth = _Width;
+    uint index = id.x + id.y * _Width + id.z * _Width * _Height;
 
-    if (id.x >= DensityWidth || id.y >= DensityWidth || id.z >= DensityWidth)
+    float3 voxelPos = float3(id.x - P, id.y - P, id.z - P);
+
+    if (voxelPos.x < 0 || voxelPos.y < 0 || voxelPos.z < 0 ||
+        voxelPos.x > N || voxelPos.y > N || voxelPos.z > N)
         return;
-
-    uint index = id.x + id.y * DensityWidth + id.z * DensityWidth * DensityWidth;
-    float3 voxelPos = float3(id.x, id.y, id.z);
 
     float dist = distance(voxelPos, _DigPosition);
     if (dist < _DigRadius)
@@ -28,4 +29,82 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         float current = _Noise[index];
         _Noise[index] = lerp(current, -1.0, fade);
     }
+}
+
+#pragma kernel CopyBorder
+
+StructuredBuffer<float> _SourceVoxels;
+RWStructuredBuffer<float> _TargetVoxels;
+
+int _PaddedWidth;
+int _FaceAxis; // 0 = x, 1 = y, 2 = z
+int _SourceCoord;
+int _TargetCoord;
+
+[numthreads(8, 8, 1)]
+void CopyBorder(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _PaddedWidth || id.y >= _PaddedWidth)
+        return;
+
+    int3 srcPos = int3(0, 0, 0);
+    int3 dstPos = int3(0, 0, 0);
+
+    if (_FaceAxis == 0)
+    {
+        srcPos = int3(_SourceCoord, id.x, id.y);
+        dstPos = int3(_TargetCoord, id.x, id.y);
+    }
+    else if (_FaceAxis == 1)
+    {
+        srcPos = int3(id.x, _SourceCoord, id.y);
+        dstPos = int3(id.x, _TargetCoord, id.y);
+    }
+    else if (_FaceAxis == 2)
+    {
+        srcPos = int3(id.x, id.y, _SourceCoord);
+        dstPos = int3(id.x, id.y, _TargetCoord);
+    }
+
+    int srcIndex = srcPos.x + srcPos.y * _PaddedWidth + srcPos.z * _PaddedWidth * _PaddedWidth;
+    int dstIndex = dstPos.x + dstPos.y * _PaddedWidth + dstPos.z * _PaddedWidth * _PaddedWidth;
+
+    float val = _SourceVoxels[srcIndex];
+    _TargetVoxels[dstIndex] = val;
+}
+
+#pragma kernel Raymarch 
+
+StructuredBuffer<float> _Voxels;
+RWStructuredBuffer<float> _VoxelOut;
+
+float3 _RayOrigin;
+float3 _RayDirection;
+float _MaxDistance;
+
+[numthreads(1, 1, 1)]
+void Raymarch(uint3 id : SV_DispatchThreadID)
+{
+    int padded = _Width;
+
+    float stepSize = 0.5;
+    for (float t = 0; t < _MaxDistance; t += stepSize)
+    {
+        float3 world = _RayOrigin + _RayDirection * t;
+        int3 id = int3(floor(world) + P);
+
+        if (any(id < 0) || id.x >= padded || id.y >= padded || id.z >= padded)
+            continue;
+
+        int index = id.x + id.y * padded + id.z * padded * padded;
+        float d = _Voxels[index];
+
+        if (d > 0.0)
+        {
+            _VoxelOut[0] = t;
+            return;
+        }
+    }
+
+    _VoxelOut[0] = -1.0;
 }

@@ -1,15 +1,18 @@
 using MarchingCubesGPUProject;
 using UnityEngine;
+using System.Collections.Generic;
 
 public class ChunkManager : MonoBehaviour
 {
     public GameObject chunkPrefab;
-    public int chunkSize = 64;
+    public static int chunkSize = 64;  // Use as ChunkManager.chunkSize everywhere.
     public int worldSizeX = 2;
     public int worldSizeY = 1;
     public int worldSizeZ = 2;
 
     private MarchingCubesGPU[,,] chunks;
+    // A dictionary to hold a normals RenderTexture for each chunk.
+    private Dictionary<Vector3Int, RenderTexture> normalsPool = new Dictionary<Vector3Int, RenderTexture>();
 
     void Start()
     {
@@ -22,15 +25,47 @@ public class ChunkManager : MonoBehaviour
                 for (int z = 0; z < worldSizeZ; z++)
                 {
                     Vector3 position = new Vector3(x, -y, z) * chunkSize;
-                    GameObject chunk = Instantiate(chunkPrefab, position, Quaternion.identity, transform); // keep as is
+                    GameObject chunk = Instantiate(chunkPrefab, position, Quaternion.identity, transform);
 
                     MarchingCubesGPU mc = chunk.GetComponent<MarchingCubesGPU>();
                     chunks[x, y, z] = mc;
-                    mc.ChunkCoord = new Vector3Int(x, y, z);
-                    mc.ChunkWorldPosition = chunk.transform.position; // don't reuse `position` directly
+                    Vector3Int coord = new Vector3Int(x, y, z);
+                    mc.ChunkCoord = coord;
+                    mc.ChunkWorldPosition = chunk.transform.position;
+
+                    // Create and assign the normals RenderTexture from the pool.
+                    RenderTexture normalsBuffer = CreateNormalsBuffer();
+                    normalsPool[coord] = normalsBuffer;
+                    mc.SetNormalsBuffer(normalsBuffer);
+
+                    mc.SetChunkManager(this);
                     Debug.Log($"[{mc.ChunkCoord}] chunk at world position: {transform.position}, chunkWorldPos: {mc.ChunkWorldPosition}");
                 }
             }
+        }
+    }
+
+    // Helper method to create a normals RenderTexture for a single chunk.
+    // Adjust resolution if needed; here we use N (64) as width/height and depth.
+    RenderTexture CreateNormalsBuffer()
+    {
+        int rtWidth = MarchingCubesGPU.N; // Using the constant from MarchingCubesGPU.
+        RenderTexture rt = new RenderTexture(rtWidth, rtWidth, 0, RenderTextureFormat.ARGBHalf, RenderTextureReadWrite.Linear);
+        rt.dimension = UnityEngine.Rendering.TextureDimension.Tex3D;
+        rt.enableRandomWrite = true;
+        rt.useMipMap = false;
+        rt.volumeDepth = rtWidth;
+        rt.Create();
+        return rt;
+    }
+
+    // Release all normals RenderTextures when the manager is destroyed.
+    void OnDestroy()
+    {
+        foreach (var rt in normalsPool.Values)
+        {
+            if (rt != null)
+                rt.Release();
         }
     }
 
@@ -46,14 +81,25 @@ public class ChunkManager : MonoBehaviour
         return chunks[x, y, z];
     }
 
+    public MarchingCubesGPU GetChunk(int x, int y, int z)
+    {
+        if (x < 0 || y < 0 || z < 0 || x >= worldSizeX || y >= worldSizeY || z >= worldSizeZ)
+            return null;
+        return chunks[x, y, z];
+    }
     public void DigAtWorldPosition(Vector3 worldPos, float radius)
     {
-        int minX = Mathf.FloorToInt((worldPos.x - radius) / chunkSize);
-        int maxX = Mathf.FloorToInt((worldPos.x + radius) / chunkSize);
-        int minY = Mathf.FloorToInt((worldPos.y - radius) / chunkSize);
-        int maxY = Mathf.FloorToInt((worldPos.y + radius) / chunkSize);
-        int minZ = Mathf.FloorToInt((worldPos.z - radius) / chunkSize);
-        int maxZ = Mathf.FloorToInt((worldPos.z + radius) / chunkSize);
+        int cs = chunkSize;
+        // Compute the axis‑aligned bounding box (AABB) of the affected area.
+        Vector3 minWorld = worldPos - Vector3.one * radius;
+        Vector3 maxWorld = worldPos + Vector3.one * radius;
+
+        int minX = Mathf.FloorToInt(minWorld.x / cs);
+        int maxX = Mathf.FloorToInt(maxWorld.x / cs);
+        int minY = Mathf.FloorToInt(minWorld.y / cs);
+        int maxY = Mathf.FloorToInt(maxWorld.y / cs);
+        int minZ = Mathf.FloorToInt(minWorld.z / cs);
+        int maxZ = Mathf.FloorToInt(maxWorld.z / cs);
 
         for (int x = minX; x <= maxX; x++)
         {
@@ -61,20 +107,76 @@ public class ChunkManager : MonoBehaviour
             {
                 for (int z = minZ; z <= maxZ; z++)
                 {
+                    // Check if these chunk coordinates are within our world bounds.
                     if (x < 0 || y < 0 || z < 0 || x >= worldSizeX || y >= worldSizeY || z >= worldSizeZ)
                         continue;
-
-                    var chunk = chunks[x, y, z];
-                    Vector3 localPos = worldPos - chunk.ChunkWorldPosition;
-                    chunk.DigAtLocal(localPos, radius);
-                    RemeshBorderingChunks(x, y, z, localPos, radius);
+                    MarchingCubesGPU chunk = GetChunk(x, y, z);
+                    if (chunk == null)
+                        continue;
+                    // Compute the dig position in the chunk’s local space.
+                    Vector3 localHit = worldPos - chunk.ChunkWorldPosition;
+                    // Have the chunk update its own density buffer.
+                    chunk.ApplyDigAtLocal(localHit, radius);
+                    // Update any shared border voxels (if needed).
+                    SyncBorderVoxels(chunk, x, y, z);
+                    // Optionally remesh neighboring chunks that might be affected.
+                    RemeshBorderingChunks(x, y, z, localHit, radius);
                 }
             }
         }
     }
-    void RemeshBorderingChunks(int cx, int cy, int cz, Vector3 localPos, float radius)
+
+    void DigNeighborChunksAround(Vector3 worldPos, float radius)
     {
-        // Check if this dig is near the border
+        Vector3Int centerChunk = new Vector3Int(
+            Mathf.FloorToInt(worldPos.x / chunkSize),
+            Mathf.FloorToInt(worldPos.y / chunkSize),
+            Mathf.FloorToInt(worldPos.z / chunkSize)
+        );
+
+        for (int dx = -1; dx <= 1; dx++)
+        {
+            for (int dy = -1; dy <= 1; dy++)
+            {
+                for (int dz = -1; dz <= 1; dz++)
+                {
+                    Vector3Int offset = centerChunk + new Vector3Int(dx, dy, dz);
+                    if (offset.x < 0 || offset.y < 0 || offset.z < 0 ||
+                        offset.x >= worldSizeX || offset.y >= worldSizeY || offset.z >= worldSizeZ)
+                        continue;
+                    var chunk = chunks[offset.x, offset.y, offset.z];
+                    Vector3 localPos = worldPos - chunk.ChunkWorldPosition;
+                    chunk.ApplyDigAtLocal(localPos, radius);
+                    SyncBorderVoxels(chunk, offset.x, offset.y, offset.z);
+                    RemeshBorderingChunks(offset.x, offset.y, offset.z, localPos, radius);
+                }
+            }
+        }
+    }
+
+    public void SyncBorderVoxels(MarchingCubesGPU sourceChunk, int cx, int cy, int cz)
+    {
+        Vector3Int[] directions = {
+            new Vector3Int(-1, 0, 0), new Vector3Int(1, 0, 0),
+            new Vector3Int(0, -1, 0), new Vector3Int(0, 1, 0),
+            new Vector3Int(0, 0, -1), new Vector3Int(0, 0, 1)
+        };
+
+        foreach (Vector3Int dir in directions)
+        {
+            int nx = cx + dir.x;
+            int ny = cy + dir.y;
+            int nz = cz + dir.z;
+            if (nx < 0 || ny < 0 || nz < 0 || nx >= worldSizeX || ny >= worldSizeY || nz >= worldSizeZ)
+                continue;
+            var neighborChunk = chunks[nx, ny, nz];
+            SyncSharedFace(sourceChunk, neighborChunk, dir);
+            Debug.Log($"[SyncBorder] {sourceChunk.ChunkCoord} syncing to neighbor {neighborChunk.ChunkCoord}");
+        }
+    }
+
+    public void RemeshBorderingChunks(int cx, int cy, int cz, Vector3 localPos, float radius)
+    {
         bool nearMinX = localPos.x - radius <= 1;
         bool nearMaxX = localPos.x + radius >= chunkSize - 1;
         bool nearMinY = localPos.y - radius <= 1;
@@ -84,9 +186,9 @@ public class ChunkManager : MonoBehaviour
 
         void Remesh(int x, int y, int z)
         {
-            if (x < 0 || y < 0 || z < 0 || x >= worldSizeX || y >= worldSizeY || z >= worldSizeZ)
+            if (x < 0 || y < 0 || z < 0 ||
+                x >= worldSizeX || y >= worldSizeY || z >= worldSizeZ)
                 return;
-
             chunks[x, y, z].Remesh();
         }
 
@@ -97,4 +199,26 @@ public class ChunkManager : MonoBehaviour
         if (nearMinZ) Remesh(cx, cy, cz - 1);
         if (nearMaxZ) Remesh(cx, cy, cz + 1);
     }
+
+    void SyncSharedFace(MarchingCubesGPU from, MarchingCubesGPU to, Vector3Int direction)
+    {
+        // Use the correct interior edge; for our density field this should be N
+        int edge = MarchingCubesGPU.N;
+
+        if (direction == Vector3Int.right)
+            to.CopyBorderFrom(from, faceAxis: 0, sourceCoord: edge, targetCoord: 0);
+        else if (direction == Vector3Int.left)
+            to.CopyBorderFrom(from, faceAxis: 0, sourceCoord: 0, targetCoord: edge);
+        else if (direction == Vector3Int.up)
+            to.CopyBorderFrom(from, faceAxis: 1, sourceCoord: edge, targetCoord: 0);
+        else if (direction == Vector3Int.down)
+            to.CopyBorderFrom(from, faceAxis: 1, sourceCoord: 0, targetCoord: edge);
+        else if (direction == Vector3Int.forward)
+            to.CopyBorderFrom(from, faceAxis: 2, sourceCoord: edge, targetCoord: 0);
+        else if (direction == Vector3Int.back)
+            to.CopyBorderFrom(from, faceAxis: 2, sourceCoord: 0, targetCoord: edge);
+
+        to.Remesh();
+    }
+
 }
