@@ -274,6 +274,12 @@ namespace MarchingCubesGPUProject
             m_normals.SetBuffer(0, "_Noise", m_noiseBuffer);
             m_normals.SetTexture(0, "_Result", m_normalsBuffer);
             m_normals.Dispatch(0, N / 8, N / 8, N / 8);
+
+            voxelMaterial.SetTexture("_NormalVolume", m_normalsBuffer);
+            voxelMaterial.SetVector("_VolumeWorldSize", new Vector3(N, N, N)); // Important!
+
+            m_drawBuffer.SetTexture("_NormalVolume", m_normalsBuffer);
+            m_drawBuffer.SetVector("_VolumeWorldSize", new Vector3(N, N, N));
         }
 
         void DispatchMesh()

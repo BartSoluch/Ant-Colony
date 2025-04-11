@@ -1,25 +1,64 @@
-
 #pragma kernel CSMain
 
 StructuredBuffer<float> _Noise;
-
 RWTexture3D<float3> _Result;
 
 int _Width, _Height;
 
-[numthreads(8,8,8)]
-void CSMain (uint3 id : SV_DispatchThreadID)
+[numthreads(8, 8, 8)]
+void CSMain(uint3 id : SV_DispatchThreadID)
 {
-	float v = _Noise[id.x + id.y * _Width + id.z * _Width * _Height];
-	
-	float dx = v - _Noise[(id.x+1) + id.y * _Width + id.z * _Width * _Height];
-	
-	float dy = v -_Noise[id.x + (id.y+1) * _Width + id.z * _Width * _Height];
-	
-	float dz = v -_Noise[id.x + id.y * _Width + (id.z+1) * _Width * _Height];
-	
+    uint3 dims = uint3(_Width, _Height, _Width); // Assuming cube
 
-    _Result[id] = float3(1, 0, 0); // write red everywhere
+    // Clamp to avoid out-of-bounds
+    uint xL = id.x > 0 ? id.x - 1 : id.x;
+    uint xR = min(id.x + 1, dims.x - 1);
 
+    uint yD = id.y > 0 ? id.y - 1 : id.y;
+    uint yU = min(id.y + 1, dims.y - 1);
 
+    uint zB = id.z > 0 ? id.z - 1 : id.z;
+    uint zF = min(id.z + 1, dims.z - 1);
+
+    float vCenter = _Noise[id.x + id.y * dims.x + id.z * dims.x * dims.y];
+
+    float3 smoothedGrad = float3(0, 0, 0);
+    int count = 0;
+
+    // Blur kernel: loop over local 3x3x3 neighbourhood
+    for (int ox = -1; ox <= 1; ++ox)
+        for (int oy = -1; oy <= 1; ++oy)
+            for (int oz = -1; oz <= 1; ++oz)
+            {
+                uint nx = clamp(id.x + ox, 0, dims.x - 1);
+                uint ny = clamp(id.y + oy, 0, dims.y - 1);
+                uint nz = clamp(id.z + oz, 0, dims.z - 1);
+
+                float vL = _Noise[max(nx - 1, 0) + ny * dims.x + nz * dims.x * dims.y];
+                float vR = _Noise[min(nx + 1, dims.x - 1) + ny * dims.x + nz * dims.x * dims.y];
+
+                float vD = _Noise[nx + max(ny - 1, 0) * dims.x + nz * dims.x * dims.y];
+                float vU = _Noise[nx + min(ny + 1, dims.y - 1) * dims.x + nz * dims.x * dims.y];
+
+                float vB = _Noise[nx + ny * dims.x + max(nz - 1, 0) * dims.x * dims.y];
+                float vF = _Noise[nx + ny * dims.x + min(nz + 1, dims.z - 1) * dims.x * dims.y];
+
+                float3 localGrad;
+                localGrad.x = (vR - vL) * 0.5;
+                localGrad.y = (vU - vD) * 0.5;
+                localGrad.z = (vF - vB) * 0.5;
+
+                smoothedGrad += localGrad;
+                count++;
+            }
+
+    smoothedGrad /= count;
+
+    // Final normalisation to ensure stability
+    if (length(smoothedGrad) < 0.0001)
+        smoothedGrad = float3(0, 1, 0); // Fallback up normal
+
+    smoothedGrad = normalize(smoothedGrad);
+
+    _Result[id] = smoothedGrad;
 }
