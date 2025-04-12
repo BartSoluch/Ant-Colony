@@ -328,11 +328,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   m_seed: 0
   m_digShader: {fileID: 7200000, guid: 418c4a3b4787f5c4d84fa37a55904a24, type: 3}
-  m_drawBuffer: {fileID: 2100000, guid: 7ba83c60f63377948b1fb868af78196f, type: 2}
+  m_drawBuffer: {fileID: 2100000, guid: 527ff9ea66f7de04ca9793300a4dfcf4, type: 2}
   m_perlinNoise: {fileID: 7200000, guid: a1a0c08741b74c54988d6ce3ef373c70, type: 3}
   m_marchingCubes: {fileID: 7200000, guid: 714069d253d07644c9a216db5121af3c, type: 3}
   m_normals: {fileID: 7200000, guid: c88e189ad8c364b4babacbcbc47a3e86, type: 3}
-  voxelMaterial: {fileID: 2100000, guid: 7ba83c60f63377948b1fb868af78196f, type: 2}
+  voxelMaterial: {fileID: 2100000, guid: 527ff9ea66f7de04ca9793300a4dfcf4, type: 2}
 --- !u!4 &1615266615
 Transform:
   m_ObjectHideFlags: 0
