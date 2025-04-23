@@ -2,10 +2,11 @@ using UnityEngine;
 
 public class AntSpawner : MonoBehaviour
 {
-    [Header("Shared Ant Prefab")]
-    public GameObject antPrefab;
+    [Header("Ant Prefabs (must have DiggerAnt or ScoutAnt on them)")]
+    public GameObject diggerPrefab;
+    public GameObject scoutPrefab;
 
-    [Header("How many of each role?")]
+    [Header("How many of each to spawn")]
     public int numDiggers = 5;
     public int numScouts = 5;
 
@@ -14,40 +15,36 @@ public class AntSpawner : MonoBehaviour
 
     void Start()
     {
-        if (antPrefab == null)
+        Vector3 center = VoxelWorld.Instance.GetCenterWorldPosition();
+
+        // Spawn diggers
+        SpawnAnts(diggerPrefab, numDiggers, center);
+
+        // Spawn scouts
+        SpawnAnts(scoutPrefab, numScouts, center);
+    }
+
+    void SpawnAnts(GameObject prefab, int count, Vector3 center)
+    {
+        if (prefab == null)
         {
-            Debug.LogError("[AntSpawner] No antPrefab assigned!");
+            Debug.LogError("[AntSpawner] Prefab is null!");
             return;
         }
 
-        Vector3 center = VoxelWorld.Instance.GetCenterWorldPosition();
-
-        // Spawn all diggers
-        SpawnAnts(numDiggers, AntAgent.Role.Digger, center);
-
-        // Spawn all scouts
-        SpawnAnts(numScouts, AntAgent.Role.Scout, center);
-    }
-
-    void SpawnAnts(int count, AntAgent.Role role, Vector3 center)
-    {
         for (int i = 0; i < count; i++)
         {
-            // random position in a horizontal disc
-            Vector3 spawnPos = center + Random.insideUnitSphere * spawnRadius;
-            spawnPos.y = center.y;
+            // random horizontal disc around center
+            Vector3 pos = center + Random.insideUnitSphere * spawnRadius;
+            pos.y = center.y;
 
-            GameObject go = Instantiate(antPrefab, spawnPos, Quaternion.identity);
-            go.name = $"{antPrefab.name}-{role}-{i}";
+            GameObject go = Instantiate(prefab, pos, Quaternion.identity);
+            go.name = prefab.name + "-" + i;
 
             AntAgent agent = go.GetComponent<AntAgent>();
-            if (agent != null)
+            if (agent == null)
             {
-                agent.role = role;
-            }
-            else
-            {
-                Debug.LogWarning($"Spawned object {go.name} is missing AntAgent!");
+                Debug.LogWarning("[AntSpawner] " + go.name + " has no AntAgent!");
             }
         }
     }

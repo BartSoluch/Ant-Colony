@@ -9,11 +9,12 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 6537693825228941455}
-  - component: {fileID: 7331442022946551875}
+  - component: {fileID: 9074368231783000245}
   - component: {fileID: 1423924320485364743}
   - component: {fileID: 2063666722554574212}
+  - component: {fileID: 1556526276166619236}
   m_Layer: 3
-  m_Name: AntNew
+  m_Name: ScoutAnt
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -35,7 +36,7 @@ Transform:
   - {fileID: 5586611483675523402}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &7331442022946551875
+--- !u!114 &9074368231783000245
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -44,21 +45,16 @@ MonoBehaviour:
   m_GameObject: {fileID: 2477574526353432753}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: ddff21b1f9565c343a9ab063307b4609, type: 3}
+  m_Script: {fileID: 11500000, guid: 3760045db23157c40812110c8fb77924, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  role: 0
-  currentState: 0
-  digRadius: 6
-  digCooldown: 4
-  moveSpeed: 2
-  pheromoneDepositAmount: 1
-  directionUpdateCooldown: 2
   stickSpeed: 10
   rotationSpeed: 8
-  fallSpeed: 2
   stickDistance: 1.2
-  sphereRadius: 0.4
+  groundOffset: 0.5
+  moveSpeed: 1.5
+  pheromoneDepositAmount: 1
+  directionUpdateCooldown: 2
 --- !u!54 &1423924320485364743
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -107,6 +103,28 @@ SphereCollider:
   serializedVersion: 3
   m_Radius: 1
   m_Center: {x: 0, y: 0, z: 0}
+--- !u!95 &1556526276166619236
+Animator:
+  serializedVersion: 7
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2477574526353432753}
+  m_Enabled: 1
+  m_Avatar: {fileID: 0}
+  m_Controller: {fileID: 0}
+  m_CullingMode: 0
+  m_UpdateMode: 0
+  m_ApplyRootMotion: 0
+  m_LinearVelocityBlending: 0
+  m_StabilizeFeet: 0
+  m_AnimatePhysics: 0
+  m_WarningMessage: 
+  m_HasTransformHierarchy: 1
+  m_AllowConstantClipSamplingOptimization: 1
+  m_KeepAnimatorStateOnDisable: 0
+  m_WriteDefaultValuesOnDisable: 0
 --- !u!1001 &5335948582239706785
 PrefabInstance:
   m_ObjectHideFlags: 0
