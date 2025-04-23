@@ -50,7 +50,7 @@ public class DiggerAnt : AntAgent
         Vector3 move = Vector3.ProjectOnPlane(currentDirection, smoothedNormal).normalized;
         transform.position += move * moveSpeed * Time.deltaTime;
 
-        PheromoneField.Instance.DepositTrail(transform.position, pheromoneDepositAmount * 0.25f);
+        PheromoneField.Instance.DepositTrail(transform.position, pheromoneDepositAmount * Time.deltaTime);
 
         if (Time.time - lastDirectionUpdateTime > directionUpdateCooldown)
         {
@@ -59,7 +59,7 @@ public class DiggerAnt : AntAgent
         }
 
         Vector3Int best = GetBestDigTarget();
-        if (best != Vector3Int.zero)
+        if (best != transform.forward)
         {
             currentDirection = ((Vector3)(best - Vector3Int.FloorToInt(transform.position))).normalized;
             currentState = State.Digging;

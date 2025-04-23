@@ -34,7 +34,7 @@ public class ScoutAnt : AntAgent
         Vector3 move = Vector3.ProjectOnPlane(currentDirection, smoothedNormal).normalized;
         transform.position += move * moveSpeed * Time.deltaTime;
 
-        PheromoneField.Instance.DepositTrail(transform.position, pheromoneDepositAmount * 0.25f);
+        PheromoneField.Instance.DepositTrail(transform.position, pheromoneDepositAmount * Time.deltaTime);
 
         if (Time.time - lastDirectionUpdateTime > directionUpdateCooldown)
         {
