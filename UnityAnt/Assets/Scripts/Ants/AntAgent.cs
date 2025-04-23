@@ -1,9 +1,12 @@
 ﻿using UnityEngine;
 
+[RequireComponent(typeof(Rigidbody))]
 public class AntAgent : MonoBehaviour
 {
-    public enum State { Roaming, Digging, Expanding }
+    public enum Role { Digger, Scout }
+    public Role role = Role.Digger;
 
+    public enum State { Roaming, Digging, Expanding }
     public State currentState = State.Roaming;
 
     [Header("Dig Settings")]
@@ -15,12 +18,32 @@ public class AntAgent : MonoBehaviour
     public float pheromoneDepositAmount = 1f;
     public float directionUpdateCooldown = 2f;
 
+    [Header("Climb & Stick Settings")]
+    public float stickSpeed = 10f;
+    public float rotationSpeed = 8f;
+    public float fallSpeed = 2f;
+    public float stickDistance = 1.2f;
+    public float groundOffset = 0.5f;
+    private float sphereRadius;
+
     private float lastDigTime;
     private float lastDirectionUpdateTime;
     private Vector3 currentDirection;
     private Vector3 smoothedNormal = Vector3.up;
 
     private Animator animator;
+    Rigidbody rb;
+    SphereCollider sphereCol;
+
+    void Awake()
+    {
+        sphereCol = GetComponent<SphereCollider>();
+        rb = GetComponent<Rigidbody>();
+        rb.useGravity = false;
+        rb.isKinematic = true;
+        rb.interpolation = RigidbodyInterpolation.Interpolate;
+        sphereRadius = sphereCol.radius * transform.localScale.y;
+    }
 
     void Start()
     {
@@ -30,40 +53,38 @@ public class AntAgent : MonoBehaviour
 
     void Update()
     {
-        switch (currentState)
+        if (role == Role.Scout)
+            RoamScout();
+        else
         {
-            case State.Roaming: Roam(); break;
-            case State.Digging: TryDig(); break;
-            case State.Expanding: ExpandChamber(); break;
+            switch (currentState)
+            {
+                case State.Roaming: Roam(); break;
+                case State.Digging: TryDig(); break;
+                case State.Expanding: ExpandChamber(); break;
+            }
         }
 
         if (animator != null)
         {
-            float animSpeed = currentState == State.Roaming ? 1f : 0f;
+            float animSpeed = (currentState == State.Roaming) ? 1f : 0f;
             animator.SetFloat("Speed", animSpeed);
         }
 
+        // Always apply stickiness last so no drift occurs
         ApplyStickyGravity();
-
     }
+
     void Roam()
     {
         if (!FindClimbableSurface(out Vector3 surfacePoint, out Vector3 surfaceNormal))
-        {
             return;
-        }
 
-        smoothedNormal = Vector3.Slerp(smoothedNormal, surfaceNormal, Time.deltaTime * 8f);
+        smoothedNormal = Vector3.Slerp(smoothedNormal, surfaceNormal, Time.deltaTime * rotationSpeed);
         Vector3 move = Vector3.ProjectOnPlane(currentDirection, smoothedNormal).normalized;
-
         transform.position += move * moveSpeed * Time.deltaTime;
-        transform.position = Vector3.Lerp(transform.position, surfacePoint + surfaceNormal * 0.02f, Time.deltaTime * 10f);
-        Quaternion targetRot = Quaternion.LookRotation(move, smoothedNormal);
-        transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, Time.deltaTime * 8f);
 
-        // 💧 Leave trail pheromone as you walk
         PheromoneField.Instance.DepositTrail(transform.position, pheromoneDepositAmount * 0.25f);
-
         if (Time.time - lastDirectionUpdateTime > directionUpdateCooldown)
         {
             PickNewDirection();
@@ -78,23 +99,36 @@ public class AntAgent : MonoBehaviour
         }
     }
 
+    void RoamScout()
+    {
+        if (!FindClimbableSurface(out Vector3 surfacePoint, out Vector3 surfaceNormal))
+            return;
+
+        smoothedNormal = Vector3.Slerp(smoothedNormal, surfaceNormal, Time.deltaTime * rotationSpeed);
+        Vector3 move = Vector3.ProjectOnPlane(currentDirection, smoothedNormal).normalized;
+        transform.position += move * moveSpeed * Time.deltaTime;
+
+        PheromoneField.Instance.DepositTrail(transform.position, pheromoneDepositAmount * 0.25f);
+        if (Time.time - lastDirectionUpdateTime > directionUpdateCooldown)
+        {
+            PickNewDirection();
+            lastDirectionUpdateTime = Time.time;
+        }
+    }
 
     bool FindClimbableSurface(out Vector3 hitPoint, out Vector3 hitNormal)
     {
         Vector3 origin = transform.position;
-        float radius = 0.4f;
-        float distance = 1.2f;
-
         int layerMask = ~LayerMask.GetMask("Ant");
+        Vector3[] dirs = {
+        transform.up, -transform.up,
+        transform.right, -transform.right,
+        transform.forward, -transform.forward
+        };
 
-        Vector3[] directions = {
-        -transform.up, transform.forward, -transform.forward,
-        transform.right, -transform.right, transform.up
-    };
-
-        foreach (Vector3 dir in directions)
+        foreach (var dir in dirs)
         {
-            if (Physics.SphereCast(origin, radius, dir, out RaycastHit hit, distance, layerMask))
+            if (Physics.SphereCast(origin, sphereRadius, dir, out RaycastHit hit, stickDistance, layerMask))
             {
                 hitPoint = hit.point;
                 hitNormal = hit.normal;
@@ -102,15 +136,13 @@ public class AntAgent : MonoBehaviour
             }
         }
 
-        // Fallback: try a downward ray
-        if (Physics.Raycast(origin + Vector3.up * 0.5f, Vector3.down, out RaycastHit fallbackHit, 2f, layerMask))
+        if (Physics.Raycast(origin + Vector3.up * 0.5f, Vector3.down, out RaycastHit fr, stickDistance * 2f, layerMask))
         {
-            hitPoint = fallbackHit.point;
-            hitNormal = fallbackHit.normal;
+            hitPoint = fr.point;
+            hitNormal = fr.normal;
             return true;
         }
 
-        // Still nothing — ant is floating
         hitPoint = origin;
         hitNormal = Vector3.up;
         return false;
@@ -118,132 +150,101 @@ public class AntAgent : MonoBehaviour
 
     void ApplyStickyGravity()
     {
-        Vector3 origin = transform.position;
-        Vector3 down = -transform.up;
-        float stickDistance = 1f;
-        float fallSpeed = 2f;
-
-        int layerMask = ~LayerMask.GetMask("Ant"); // ignore other ants
-
-        // Try to find terrain underneath (relative "down")
-        if (Physics.Raycast(origin, down, out RaycastHit hit, stickDistance, layerMask))
+        if (FindClimbableSurface(out Vector3 surfacePoint, out Vector3 surfaceNormal))
         {
-            // Gently pull toward surface to keep grounded
-            Vector3 targetPos = hit.point + hit.normal * 0.05f;
-            transform.position = Vector3.Lerp(transform.position, targetPos, Time.deltaTime * 10f);
+            smoothedNormal = Vector3.Slerp(smoothedNormal, surfaceNormal, Time.deltaTime * rotationSpeed);
+            currentDirection = Vector3.ProjectOnPlane(currentDirection, smoothedNormal).normalized;
+            Quaternion targetRot = Quaternion.LookRotation(currentDirection, smoothedNormal);
+            transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, Time.deltaTime * rotationSpeed);
+
+            float desiredDistance = sphereCol.radius * transform.localScale.y + groundOffset;
+            Vector3 targetPos = surfacePoint + smoothedNormal * desiredDistance;
+            transform.position = Vector3.Lerp(transform.position, targetPos, Time.deltaTime * stickSpeed);
         }
         else
         {
-            // No terrain: simulate falling down
             transform.position += Vector3.down * fallSpeed * Time.deltaTime;
+            smoothedNormal = Vector3.up;
         }
     }
 
-
     void TryDig()
     {
-        if (Time.time - lastDigTime < digCooldown)
-            return;
-
+        if (Time.time - lastDigTime < digCooldown) return;
         lastDigTime = Time.time;
-
-        // Start position for the ray
-        int terrainMask = LayerMask.GetMask("Terrain");  // Ensure Terrain is assigned to solid voxels
-
-        Vector3 digDirection = GetBestDigDirection();
+        int terrainMask = LayerMask.GetMask("Terrain");
         Vector3 origin = transform.position + transform.up * 0.1f;
+        Vector3 dir = GetBestDigDirection();
 
-        if (Physics.Raycast(origin, digDirection, out RaycastHit hit, 3f, terrainMask))
+        if (Physics.Raycast(origin, dir, out RaycastHit hit, stickDistance, terrainMask))
         {
-            Vector3 digPos = hit.point;
-            VoxelWorld.Instance.TryDigAt(digPos, digRadius);
-            PheromoneField.Instance.DepositDig(digPos, pheromoneDepositAmount);
+            VoxelWorld.Instance.TryDigAt(hit.point, digRadius);
+            PheromoneField.Instance.DepositDig(hit.point, pheromoneDepositAmount);
         }
         else
         {
-            Vector3 fallbackPos = transform.position + transform.forward * 0.6f;
-            Debug.LogWarning($"⚠️ Ant {name} tried to dig but hit nothing. Using fallback at {fallbackPos}");
-
-            VoxelWorld.Instance.TryDigAt(fallbackPos, digRadius * 0.8f);
-            PheromoneField.Instance.DepositDig(fallbackPos, pheromoneDepositAmount * 0.5f);
+            Vector3 fallback = transform.position + transform.forward * 0.6f;
+            Debug.LogWarning($"⚠️ Ant {name} failed to dig. Fallback at {fallback}");
+            VoxelWorld.Instance.TryDigAt(fallback, digRadius * 0.8f);
+            PheromoneField.Instance.DepositDig(fallback, pheromoneDepositAmount * 0.5f);
         }
+
         float digPhero = PheromoneField.Instance.GetDig(Vector3Int.FloorToInt(transform.position));
-        if (digPhero > 2f && transform.position.y < 0f)
+        if (digPhero > 1f)
         {
             currentState = State.Expanding;
             return;
         }
         currentState = State.Roaming;
     }
+
     void ExpandChamber()
     {
         Vector3 origin = transform.position + transform.up * 0.1f;
-
-        // Try to dig in a random horizontal direction
-        Vector3[] directions = {
-        transform.right, -transform.right,
-        transform.forward, -transform.forward
-    };
-
-        Vector3 direction = directions[Random.Range(0, directions.Length)];
-
-        if (Physics.Raycast(origin, direction, out RaycastHit hit, 2f, LayerMask.GetMask("Terrain")))
+        Vector3[] dirs = { transform.right, -transform.right, transform.forward, -transform.forward };
+        Vector3 dir = dirs[Random.Range(0, dirs.Length)];
+        if (Physics.Raycast(origin, dir, out RaycastHit hit, 2f, LayerMask.GetMask("Terrain")))
         {
-            Vector3 digPos = hit.point;
-            VoxelWorld.Instance.TryDigAt(digPos, digRadius * 1.5f); // Bigger radius for chamber
-            PheromoneField.Instance.DepositDig(digPos, pheromoneDepositAmount * 1.5f);
-            currentState = State.Roaming;
+            VoxelWorld.Instance.TryDigAt(hit.point, digRadius * 1.5f);
+            PheromoneField.Instance.DepositDig(hit.point, pheromoneDepositAmount * 1.5f);
         }
-        else
-        {
-            // fallback if we couldn't expand
-            currentState = State.Roaming;
-        }
+        currentState = State.Roaming;
     }
 
     void PickNewDirection()
     {
-        float angle = Random.Range(0f, 360f);
-        currentDirection = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)).normalized;
-        transform.rotation = Quaternion.LookRotation(currentDirection);
+        float angle = Random.Range(0f, 360f) * Mathf.Deg2Rad;
+        Vector3 ld = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
+        currentDirection = Vector3.ProjectOnPlane(ld, smoothedNormal).normalized;
+        transform.rotation = Quaternion.LookRotation(currentDirection, smoothedNormal);
     }
+
     Vector3Int GetBestDigTarget()
     {
         Vector3Int current = Vector3Int.FloorToInt(transform.position);
         float bestScore = 0f;
         Vector3Int bestTarget = Vector3Int.zero;
-
-        // Leafcutter ant-style offsets: downward + horizontal tunneling
         Vector3Int[] offsets = {
-        new(0, -1, 0), new(1, -1, 0), new(-1, -1, 0),
-        new(0, -1, 1), new(0, -1, -1),
-        new(1, 0, 0), new(-1, 0, 0),
-        new(0, 0, 1), new(0, 0, -1),
-    };
+            new Vector3Int(0, -1, 0), new Vector3Int(1, -1, 0), new Vector3Int(-1, -1, 0),
+            new Vector3Int(0, -1, 1), new Vector3Int(0, -1, -1),
+            new Vector3Int(1, 0, 0), new Vector3Int(-1, 0, 0),
+            new Vector3Int(0, 0, 1), new Vector3Int(0, 0, -1),
+        };
 
-        foreach (Vector3Int offset in offsets)
+        foreach (var offset in offsets)
         {
             Vector3Int check = current + offset;
-
             float digPhero = PheromoneField.Instance.GetDig(check);
             float trailPhero = PheromoneField.Instance.GetTrail(check);
-
-            // Prefer places with dig pheromone AND low trail (i.e. less crowded)
             float score = digPhero + 0.1f - trailPhero * 0.5f;
-
-            // Bonus score if going downward
             if (offset.y < 0) score += 0.2f;
-
-            // Bonus for mid-depths to form chambers
             if (check.y < 2 && check.y > -10) score += 0.3f;
-
             if (score > bestScore)
             {
                 bestScore = score;
                 bestTarget = check;
             }
         }
-
         return bestScore > 0.15f ? bestTarget : Vector3Int.zero;
     }
 
@@ -252,23 +253,19 @@ public class AntAgent : MonoBehaviour
         Vector3Int current = Vector3Int.FloorToInt(transform.position);
         Vector3 bestDirection = Vector3.zero;
         float bestValue = 0f;
-
         for (int x = -1; x <= 1; x++)
-            for (int y = -1; y <= 0; y++) // Prefer same level or downward
+            for (int y = -1; y <= 0; y++)
                 for (int z = -1; z <= 1; z++)
                 {
                     Vector3Int offset = new Vector3Int(x, y, z);
                     Vector3Int neighbor = current + offset;
                     float pheromone = PheromoneField.Instance.GetDig(neighbor);
-
                     if (pheromone > bestValue)
                     {
                         bestValue = pheromone;
                         bestDirection = offset;
                     }
                 }
-
         return bestDirection != Vector3.zero ? bestDirection.normalized : transform.forward;
     }
-
 }
