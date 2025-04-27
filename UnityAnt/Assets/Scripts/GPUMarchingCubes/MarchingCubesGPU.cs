@@ -79,16 +79,27 @@ namespace MarchingCubesGPUProject
                         int i = (x) + (y) * densityWidth + (z) * densityWidth * densityWidth;
                         float worldY = ChunkWorldPosition.y + (y - P);
 
+                        // Generate surface height using Perlin noise
                         float perlin = Mathf.PerlinNoise(
                             ((x - P) + ChunkCoord.x * N) * frequency + offsetX,
                             ((z - P) + ChunkCoord.z * N) * frequency + offsetZ
                         );
                         float surfaceHeight = baseGroundHeight + (perlin * groundVariation);
 
-                        flatDensity[i] = surfaceHeight - worldY;
+                        // Compute normal density
+                        float density = surfaceHeight - worldY;
+
+                        // Clamp underground density to maximum 1.0f for solid dirt
+                        if (worldY < surfaceHeight)
+                        {
+                            density = Mathf.Min(density, 1.0f);
+                        }
+
+                        flatDensity[i] = density;
                     }
                 }
             }
+
 
             m_noiseBuffer.SetData(flatDensity);
             cpuDensity = flatDensity;
