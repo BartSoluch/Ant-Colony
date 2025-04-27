@@ -10,7 +10,6 @@ public class ChunkManager : MonoBehaviour
     public int worldSizeY = 1;
     public int worldSizeZ = 2;
 
-    public int yOffset = 0;
 
     private MarchingCubesGPU[,,] chunks;
     // A dictionary to hold a normals RenderTexture for each chunk.
@@ -18,22 +17,21 @@ public class ChunkManager : MonoBehaviour
 
     void Start()
     {
-        yOffset = worldSizeY / 2; // Center world vertically (allows y=-1, y=0, y=1, etc.)
-
         chunks = new MarchingCubesGPU[worldSizeX, worldSizeY, worldSizeZ];
 
+        // First: Spawn all chunks
         for (int x = 0; x < worldSizeX; x++)
         {
             for (int y = 0; y < worldSizeY; y++)
             {
                 for (int z = 0; z < worldSizeZ; z++)
                 {
-                    Vector3 position = new Vector3(x, y - yOffset, z) * chunkSize;
+                    Vector3 position = new Vector3(x, y, z) * chunkSize;
                     GameObject chunk = Instantiate(chunkPrefab, position, Quaternion.identity, transform);
 
                     MarchingCubesGPU mc = chunk.GetComponent<MarchingCubesGPU>();
                     chunks[x, y, z] = mc;
-                    Vector3Int coord = new Vector3Int(x, y - yOffset, z);
+                    Vector3Int coord = new Vector3Int(x, y, z);
                     mc.ChunkCoord = coord;
                     mc.ChunkWorldPosition = chunk.transform.position;
 
@@ -43,6 +41,22 @@ public class ChunkManager : MonoBehaviour
                     mc.SetChunkManager(this);
 
                     Debug.Log($"Chunk {coord} → worldPos = {chunk.transform.position}");
+                }
+            }
+        }
+
+        //After all chunks have been created, sync their borders
+        for (int x = 0; x < worldSizeX; x++)
+        {
+            for (int y = 0; y < worldSizeY; y++)
+            {
+                for (int z = 0; z < worldSizeZ; z++)
+                {
+                    MarchingCubesGPU chunk = chunks[x, y, z];
+                    if (chunk != null)
+                    {
+                        SyncBorderVoxels(chunk, x, y, z);
+                    }
                 }
             }
         }
@@ -75,10 +89,10 @@ public class ChunkManager : MonoBehaviour
     public MarchingCubesGPU GetChunkAtWorldPosition(Vector3 worldPos)
     {
         int x = Mathf.FloorToInt(worldPos.x / chunkSize);
-        int y = Mathf.FloorToInt(worldPos.y / chunkSize) + yOffset; // Add yOffset
+        int y = Mathf.FloorToInt(worldPos.y / chunkSize);
         int z = Mathf.FloorToInt(worldPos.z / chunkSize);
 
-        Debug.Log($"[ChunkManager] Lookup chunk at ({x},{y - yOffset},{z})");
+        Debug.Log($"[ChunkManager] Lookup chunk at ({x},{y},{z})");
 
         if (x < 0 || y < 0 || z < 0 || x >= worldSizeX || y >= worldSizeY || z >= worldSizeZ)
             return null;
@@ -89,7 +103,6 @@ public class ChunkManager : MonoBehaviour
 
     public MarchingCubesGPU GetChunk(int x, int y, int z)
     {
-        y += yOffset; // Apply offset here too
 
         if (x < 0 || y < 0 || z < 0 || x >= worldSizeX || y >= worldSizeY || z >= worldSizeZ)
             return null;

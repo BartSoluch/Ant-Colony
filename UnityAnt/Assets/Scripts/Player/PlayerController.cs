@@ -23,6 +23,8 @@ public class PlayerController : MonoBehaviour
         {
             chunkManager = FindFirstObjectByType<ChunkManager>();
         }
+
+        TeleportAboveWorldCenter();
     }
 
     void Update()
@@ -175,4 +177,27 @@ public class PlayerController : MonoBehaviour
     {
         return chunkManager;
     }
+    void TeleportAboveWorldCenter()
+    {
+        if (chunkManager == null)
+            return;
+
+        // Calculate the center of the world
+        float centerX = (chunkManager.worldSizeX * ChunkManager.chunkSize) * 0.5f;
+        float centerZ = (chunkManager.worldSizeZ * ChunkManager.chunkSize) * 0.5f;
+
+        // Calculate the top of the world (height)
+        float topY = chunkManager.worldSizeY * ChunkManager.chunkSize;
+
+        // Set player position slightly above the world
+        Vector3 spawnPos = new Vector3(centerX, topY + 10f, centerZ);
+        transform.position = spawnPos;
+
+        // Also reset the Rigidbody velocity (so you don't fall weirdly)
+        if (rb != null)
+            rb.linearVelocity = Vector3.zero;
+
+        Debug.Log($"[PlayerController] Teleported player to {spawnPos}");
+    }
+
 }

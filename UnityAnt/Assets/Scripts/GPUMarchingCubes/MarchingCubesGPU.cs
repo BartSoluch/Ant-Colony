@@ -62,9 +62,9 @@ namespace MarchingCubesGPUProject
 
             // Initialize the flat density array using Perlin noise (or your desired method)
             float[] flatDensity = new float[voxelCount];
-            float frequency = 0.02f;
-            float baseGroundHeight = N * 0.5f;   // 32
-            float groundVariation = N * 0.25f;   // 16
+            float frequency = 0.005f;
+            float groundVariation = N * 0.5f;  // 32
+            float baseGroundHeight = N * 2.5f; // 64 * 2.5 = 160
 
             Random.InitState(m_seed);
             float offsetX = Random.Range(0f, 1000f);
@@ -79,17 +79,14 @@ namespace MarchingCubesGPUProject
                         int i = (x) + (y) * densityWidth + (z) * densityWidth * densityWidth;
                         float worldY = ChunkWorldPosition.y + (y - P);
 
-                        // Generate surface height using Perlin noise
                         float perlin = Mathf.PerlinNoise(
                             ((x - P) + ChunkCoord.x * N) * frequency + offsetX,
                             ((z - P) + ChunkCoord.z * N) * frequency + offsetZ
                         );
-                        float surfaceHeight = baseGroundHeight + (perlin * groundVariation);
 
-                        // Compute normal density
+                        float surfaceHeight = baseGroundHeight + (perlin * groundVariation);
                         float density = surfaceHeight - worldY;
 
-                        // Clamp underground density to maximum 1.0f for solid dirt
                         if (worldY < surfaceHeight)
                         {
                             density = Mathf.Min(density, 1.0f);
@@ -99,7 +96,6 @@ namespace MarchingCubesGPUProject
                     }
                 }
             }
-
 
             m_noiseBuffer.SetData(flatDensity);
             cpuDensity = flatDensity;
@@ -383,10 +379,7 @@ namespace MarchingCubesGPUProject
 
             float d = cpuDensity[index];
 
-            if (ChunkWorldPosition.y < 0f)  // Only print if underground
-            {
-                Debug.Log($"[Density] {ChunkCoord} sample at {worldPos} = {d}");
-            }
+            Debug.Log($"[Density] {ChunkCoord} sample at {worldPos} = {d}");
 
             return d;
         }
