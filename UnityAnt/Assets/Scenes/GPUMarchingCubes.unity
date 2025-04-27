@@ -293,6 +293,10 @@ PrefabInstance:
       value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 9055839988526589278, guid: c230bcc37812d0b4792a253e45bf162d, type: 3}
+      propertyPath: digRadius
+      value: 20
+      objectReference: {fileID: 0}
+    - target: {fileID: 9055839988526589278, guid: c230bcc37812d0b4792a253e45bf162d, type: 3}
       propertyPath: chunkManager
       value: 
       objectReference: {fileID: 2104555790}
@@ -301,6 +305,99 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: c230bcc37812d0b4792a253e45bf162d, type: 3}
+--- !u!1 &1109333874
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1109333876}
+  - component: {fileID: 1109333875}
+  m_Layer: 0
+  m_Name: PheromoneField
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1109333875
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1109333874}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 60ade8194e464864cb8f02999c27a34a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  decayRate: 0.2
+  trailDecayRate: 0.05
+  pheromoneVisualPrefab: {fileID: 0}
+--- !u!4 &1109333876
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1109333874}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1488778919
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1488778921}
+  - component: {fileID: 1488778920}
+  m_Layer: 0
+  m_Name: Ant Spawner
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1488778920
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1488778919}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 533cc0e89f6010545a01a248d7860425, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  antPrefab: {fileID: 2477574526353432753, guid: 3588c64fc0dc1554a8ceaa559ed17cb4, type: 3}
+  numberOfAnts: 10
+--- !u!4 &1488778921
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1488778919}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 38.049168, y: 25.442585, z: 77.860855}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &2104555789
 GameObject:
   m_ObjectHideFlags: 0
@@ -331,9 +428,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   chunkPrefab: {fileID: 7459184397080430676, guid: faffb00ef123fed4b868dbbe24797a78, type: 3}
-  worldSizeX: 5
-  worldSizeY: 3
-  worldSizeZ: 5
+  worldSizeX: 2
+  worldSizeY: 2
+  worldSizeZ: 1
 --- !u!4 &2104555791
 Transform:
   m_ObjectHideFlags: 0
@@ -343,7 +440,7 @@ Transform:
   m_GameObject: {fileID: 2104555789}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 39.91441, y: 33.043438, z: 43.791252}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -356,3 +453,5 @@ SceneRoots:
   - {fileID: 203844589}
   - {fileID: 1053290019}
   - {fileID: 2104555791}
+  - {fileID: 1488778921}
+  - {fileID: 1109333876}

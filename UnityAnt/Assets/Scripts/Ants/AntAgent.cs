@@ -138,35 +138,39 @@ public class AntAgent : MonoBehaviour
             transform.position += Vector3.down * fallSpeed * Time.deltaTime;
         }
     }
-
-
     void TryDig()
     {
         if (Time.time - lastDigTime < digCooldown)
             return;
-
         lastDigTime = Time.time;
 
-        // Start position for the ray
-        int terrainMask = LayerMask.GetMask("Terrain");  // Ensure Terrain is assigned to solid voxels
-
+        int terrainMask = LayerMask.GetMask("Terrain");  // Ensure the Terrain layer is correct.
         Vector3 digDirection = GetBestDigDirection();
         Vector3 origin = transform.position + transform.up * 0.1f;
+
+        // Get the ChunkManager instance (ensure your ChunkManager is active in the scene)
+        ChunkManager chunkManager = FindFirstObjectByType<ChunkManager>(); // Or FindObjectOfType<ChunkManager>()
+        if (chunkManager == null)
+        {
+            Debug.LogError("ChunkManager not found. Aborting dig.");
+            return;
+        }
 
         if (Physics.Raycast(origin, digDirection, out RaycastHit hit, 3f, terrainMask))
         {
             Vector3 digPos = hit.point;
-            VoxelWorld.Instance.TryDigAt(digPos, digRadius);
+            // Use the GPU-based digging via ChunkManager
+            chunkManager.DigAtWorldPosition(digPos, digRadius);
             PheromoneField.Instance.DepositDig(digPos, pheromoneDepositAmount);
         }
         else
         {
             Vector3 fallbackPos = transform.position + transform.forward * 0.6f;
             Debug.LogWarning($"⚠️ Ant {name} tried to dig but hit nothing. Using fallback at {fallbackPos}");
-
-            VoxelWorld.Instance.TryDigAt(fallbackPos, digRadius * 0.8f);
+            chunkManager.DigAtWorldPosition(fallbackPos, digRadius * 0.8f);
             PheromoneField.Instance.DepositDig(fallbackPos, pheromoneDepositAmount * 0.5f);
         }
+
         float digPhero = PheromoneField.Instance.GetDig(Vector3Int.FloorToInt(transform.position));
         if (digPhero > 2f && transform.position.y < 0f)
         {
@@ -175,6 +179,7 @@ public class AntAgent : MonoBehaviour
         }
         currentState = State.Roaming;
     }
+
     void ExpandChamber()
     {
         Vector3 origin = transform.position + transform.up * 0.1f;
@@ -185,18 +190,29 @@ public class AntAgent : MonoBehaviour
         transform.forward, -transform.forward
     };
 
-        Vector3 direction = directions[Random.Range(0, directions.Length)];
+        // Acquire the ChunkManager instance
+        ChunkManager chunkManager = FindFirstObjectByType<ChunkManager>(); // Or use FindObjectOfType<ChunkManager>()
+        if (chunkManager == null)
+        {
+            Debug.LogError("ChunkManager not found. Aborting chamber expansion dig.");
+            currentState = State.Roaming;
+            return;
+        }
 
-        if (Physics.Raycast(origin, direction, out RaycastHit hit, 2f, LayerMask.GetMask("Terrain")))
+        Vector3 direction = directions[Random.Range(0, directions.Length)];
+        int terrainMask = LayerMask.GetMask("Terrain");
+
+        if (Physics.Raycast(origin, direction, out RaycastHit hit, 2f, terrainMask))
         {
             Vector3 digPos = hit.point;
-            VoxelWorld.Instance.TryDigAt(digPos, digRadius * 1.5f); // Bigger radius for chamber
+            // Use the GPU dig method via ChunkManager
+            chunkManager.DigAtWorldPosition(digPos, digRadius * 1.5f);
             PheromoneField.Instance.DepositDig(digPos, pheromoneDepositAmount * 1.5f);
             currentState = State.Roaming;
         }
         else
         {
-            // fallback if we couldn't expand
+            // Fallback if we couldn't expand
             currentState = State.Roaming;
         }
     }

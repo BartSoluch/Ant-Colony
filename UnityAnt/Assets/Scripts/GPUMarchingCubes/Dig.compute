@@ -25,7 +25,8 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     float dist = distance(voxelPos, _DigPosition);
     if (dist < _DigRadius)
     {
-        float fade = smoothstep(_DigRadius, 0.0, dist);
+        // Compute fade so that at the center fade = 1 and at _DigRadius fade = 0.
+        float fade = 1.0 - smoothstep(0.0, _DigRadius, dist);
         float current = _Noise[index];
         _Noise[index] = lerp(current, -1.0, fade);
     }
@@ -107,4 +108,40 @@ void Raymarch(uint3 id : SV_DispatchThreadID)
     }
 
     _VoxelOut[0] = -1.0;
+}
+
+#pragma kernel CopyBorderBlend
+
+[numthreads(8, 8, 1)]
+void CopyBorderBlend(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _PaddedWidth || id.y >= _PaddedWidth)
+        return;
+
+    int3 srcPos = int3(0, 0, 0);
+    int3 dstPos = int3(0, 0, 0);
+
+    if (_FaceAxis == 0)
+    {
+        srcPos = int3(_SourceCoord, id.x, id.y);
+        dstPos = int3(_TargetCoord, id.x, id.y);
+    }
+    else if (_FaceAxis == 1)
+    {
+        srcPos = int3(id.x, _SourceCoord, id.y);
+        dstPos = int3(id.x, _TargetCoord, id.y);
+    }
+    else if (_FaceAxis == 2)
+    {
+        srcPos = int3(id.x, id.y, _SourceCoord);
+        dstPos = int3(id.x, id.y, _TargetCoord);
+    }
+
+    int srcIndex = srcPos.x + srcPos.y * _PaddedWidth + srcPos.z * _PaddedWidth * _PaddedWidth;
+    int dstIndex = dstPos.x + dstPos.y * _PaddedWidth + dstPos.z * _PaddedWidth * _PaddedWidth;
+
+    float sourceVal = _SourceVoxels[srcIndex];
+    float targetVal = _TargetVoxels[dstIndex];
+    float blended = (sourceVal + targetVal) * 0.5;
+    _TargetVoxels[dstIndex] = blended;
 }

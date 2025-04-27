@@ -61,70 +61,81 @@ public class PlayerController : MonoBehaviour
 
     private float lastDigTime;
     private float digCooldown = 0.2f;
+
     void DigAtMousePosition()
     {
         if (Time.time - lastDigTime < digCooldown) return;
         lastDigTime = Time.time;
 
-        // Cast a ray from the camera through the mouse position.
         Ray ray = playerCamera.ScreenPointToRay(Input.mousePosition);
+        Vector3 origin = ray.origin;
+        Vector3 dir = ray.direction.normalized;
+
         float maxDistance = 100f;
+        float traveled = 0f;
 
-        // (Use a 3D DDA approach to find the first chunk that returns a voxel hit.)
-        int cs = ChunkManager.chunkSize;
-        Vector3 rayOrigin = ray.origin;
-        Vector3 rayDir = ray.direction.normalized;
-        Vector3 currentPos = rayOrigin;
-        Vector3Int chunkCoord = new Vector3Int(
-            Mathf.FloorToInt(currentPos.x / cs),
-            Mathf.FloorToInt(currentPos.y / cs),
-            Mathf.FloorToInt(currentPos.z / cs)
+        Vector3 pos = origin;
+        Vector3Int voxel = new Vector3Int(
+            Mathf.FloorToInt(pos.x),
+            Mathf.FloorToInt(pos.y),
+            Mathf.FloorToInt(pos.z)
         );
+
         Vector3Int step = new Vector3Int(
-            rayDir.x > 0 ? 1 : -1,
-            rayDir.y > 0 ? 1 : -1,
-            rayDir.z > 0 ? 1 : -1
-        );
-        Vector3 nextBoundary = new Vector3(
-            (chunkCoord.x + (step.x > 0 ? 1 : 0)) * cs,
-            (chunkCoord.y + (step.y > 0 ? 1 : 0)) * cs,
-            (chunkCoord.z + (step.z > 0 ? 1 : 0)) * cs
-        );
-        Vector3 tMax = new Vector3(
-            (nextBoundary.x - rayOrigin.x) / rayDir.x,
-            (nextBoundary.y - rayOrigin.y) / rayDir.y,
-            (nextBoundary.z - rayOrigin.z) / rayDir.z
-        );
-        Vector3 tDelta = new Vector3(
-            cs / Mathf.Abs(rayDir.x),
-            cs / Mathf.Abs(rayDir.y),
-            cs / Mathf.Abs(rayDir.z)
+            dir.x > 0 ? 1 : -1,
+            dir.y > 0 ? 1 : -1,
+            dir.z > 0 ? 1 : -1
         );
 
-        float t = 0f;
-        for (int i = 0; i < 256 && t < maxDistance; i++)
+        Vector3 nextVoxelBoundary = new Vector3(
+            voxel.x + (step.x > 0 ? 1 : 0),
+            voxel.y + (step.y > 0 ? 1 : 0),
+            voxel.z + (step.z > 0 ? 1 : 0)
+        );
+
+        Vector3 tMax = new Vector3(
+            (nextVoxelBoundary.x - pos.x) / dir.x,
+            (nextVoxelBoundary.y - pos.y) / dir.y,
+            (nextVoxelBoundary.z - pos.z) / dir.z
+        );
+
+        Vector3 tDelta = new Vector3(
+            Mathf.Abs(1f / dir.x),
+            Mathf.Abs(1f / dir.y),
+            Mathf.Abs(1f / dir.z)
+        );
+
+        for (int i = 0; i < 512 && traveled < maxDistance; i++)
         {
-            MarchingCubesGPU chunk = chunkManager.GetChunk(chunkCoord.x, chunkCoord.y, chunkCoord.z);
-            if (chunk != null && chunk.RaymarchDig(rayOrigin, rayDir, maxDistance, out Vector3 hitPoint))
+            Vector3 worldVoxelPos = new Vector3(voxel.x, voxel.y, voxel.z);
+
+            // 🚀 Always find correct chunk for this voxel
+            MarchingCubesGPU chunk = chunkManager.GetChunkAtWorldPosition(worldVoxelPos);
+
+            if (chunk != null)
             {
-                // Found a voxel hit in this chunk.
-                chunkManager.DigAtWorldPosition(hitPoint, digRadius);
-                Debug.Log($"[GPU Dig] Hit at: {hitPoint}");
-                return;
+                float density = chunk.SampleDensityAtWorldPosition(worldVoxelPos);
+                if (density > 0.0f)
+                {
+                    chunkManager.DigAtWorldPosition(worldVoxelPos, digRadius);
+                    Debug.Log($"[DDA Dig] Hit solid voxel at {worldVoxelPos}");
+                    return;
+                }
             }
-            // Step to the next chunk along the ray (using 3D DDA)
+
+            // Advance to next voxel
             if (tMax.x < tMax.y)
             {
                 if (tMax.x < tMax.z)
                 {
-                    chunkCoord.x += step.x;
-                    t = tMax.x;
+                    voxel.x += step.x;
+                    traveled = tMax.x;
                     tMax.x += tDelta.x;
                 }
                 else
                 {
-                    chunkCoord.z += step.z;
-                    t = tMax.z;
+                    voxel.z += step.z;
+                    traveled = tMax.z;
                     tMax.z += tDelta.z;
                 }
             }
@@ -132,19 +143,20 @@ public class PlayerController : MonoBehaviour
             {
                 if (tMax.y < tMax.z)
                 {
-                    chunkCoord.y += step.y;
-                    t = tMax.y;
+                    voxel.y += step.y;
+                    traveled = tMax.y;
                     tMax.y += tDelta.y;
                 }
                 else
                 {
-                    chunkCoord.z += step.z;
-                    t = tMax.z;
+                    voxel.z += step.z;
+                    traveled = tMax.z;
                     tMax.z += tDelta.z;
                 }
             }
         }
-        Debug.Log("[GPU Dig] No voxel hit");
+
+        Debug.Log("[DDA Dig] No voxel found after DDA.");
     }
 
     void CameraMovement()

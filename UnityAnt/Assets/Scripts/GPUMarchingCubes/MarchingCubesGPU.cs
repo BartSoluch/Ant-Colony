@@ -13,7 +13,10 @@ namespace MarchingCubesGPUProject
         const int P = 1;  // padding
         const int SIZE = N * N * N * 3 * 5;
 
+        // New: Seed for noise generation
         public int m_seed = 0;
+
+        // Existing fields...
         public ComputeShader m_digShader;
         public Material m_drawBuffer;
         public ComputeShader m_perlinNoise;
@@ -21,23 +24,26 @@ namespace MarchingCubesGPUProject
         public ComputeShader m_normals;
 
         ComputeBuffer m_noiseBuffer, m_meshBuffer;
-        // The normals buffer is now provided externally.
         RenderTexture m_normalsBuffer;
-
         ComputeBuffer m_cubeEdgeFlags, m_triangleConnectionTable;
         [SerializeField] private Material voxelMaterial;
         public Vector3Int ChunkCoord;
         public Vector3 ChunkWorldPosition;
-
+        public ChunkManager chunkManager;
         ComputeBuffer m_vertexCountBuffer;
         int m_actualVertexCount = 0;
 
-        public ChunkManager chunkManager;
+        // NEW: References for collision mesh updates.
+        public MeshFilter collisionMeshFilter;   // Assign in Inspector (for collisions)
+        public MeshCollider collisionMeshCollider; // Assign in Inspector
+
+        private float[] cpuDensity;
+
+        private List<Vector3> debugVoxelPositions = new List<Vector3>();
 
         void Start()
         {
             Debug.Log("Marching Cubes GPU: Start() called");
-
             if (N % 8 != 0)
                 throw new System.ArgumentException("N must be divisible by 8");
 
@@ -45,7 +51,6 @@ namespace MarchingCubesGPUProject
             int voxelCount = densityWidth * densityWidth * densityWidth;
             m_noiseBuffer = new ComputeBuffer(voxelCount, sizeof(float));
 
-            // Do not create a normals RenderTexture here – it is assigned by the manager!
             m_meshBuffer = new ComputeBuffer(SIZE, sizeof(float) * 7, ComputeBufferType.Default);
             m_vertexCountBuffer = new ComputeBuffer(1, sizeof(int), ComputeBufferType.Raw);
 
@@ -55,38 +60,69 @@ namespace MarchingCubesGPUProject
             m_triangleConnectionTable = new ComputeBuffer(256 * 16, sizeof(int));
             m_triangleConnectionTable.SetData(MarchingCubesTables.TriangleConnectionTable);
 
-            // Initialize the flat density array
+            // Initialize the flat density array using Perlin noise (or your desired method)
             float[] flatDensity = new float[voxelCount];
             float frequency = 0.02f;
-            float heightScale = N * 0.2f;
+            float baseGroundHeight = N * 0.5f;   // 32
+            float groundVariation = N * 0.25f;   // 16
 
             Random.InitState(m_seed);
             float offsetX = Random.Range(0f, 1000f);
             float offsetZ = Random.Range(0f, 1000f);
 
-            for (int z = 0; z <= N; z++)
+            for (int z = 0; z < densityWidth; z++)
             {
-                for (int y = 0; y <= N; y++)
+                for (int y = 0; y < densityWidth; y++)
                 {
-                    for (int x = 0; x <= N; x++)
+                    for (int x = 0; x < densityWidth; x++)
                     {
-                        int i = (x + P) + (y + P) * densityWidth + (z + P) * densityWidth * densityWidth;
+                        int i = (x) + (y) * densityWidth + (z) * densityWidth * densityWidth;
+                        float worldY = ChunkWorldPosition.y + (y - P);
+
                         float perlin = Mathf.PerlinNoise(
-                            (x + ChunkCoord.x * N) * frequency + offsetX,
-                            (z + ChunkCoord.z * N) * frequency + offsetZ);
-                        float height = perlin * heightScale + (N * 0.3f);
-                        float worldY = y + ChunkCoord.y * N;
-                        flatDensity[i] = height - worldY;
+                            ((x - P) + ChunkCoord.x * N) * frequency + offsetX,
+                            ((z - P) + ChunkCoord.z * N) * frequency + offsetZ
+                        );
+                        float surfaceHeight = baseGroundHeight + (perlin * groundVariation);
+
+                        flatDensity[i] = surfaceHeight - worldY;
                     }
                 }
             }
 
             m_noiseBuffer.SetData(flatDensity);
+            cpuDensity = flatDensity;
             m_vertexCountBuffer.SetData(new int[] { 0 });
             DispatchNormals();
             DispatchMesh();
 
             Debug.Log("Marching Cubes GPU: Dispatched all shaders");
+        }
+        void Awake()
+        {
+            // Attempt to auto-assign if they're missing
+            if (!collisionMeshFilter)
+                collisionMeshFilter = GetComponent<MeshFilter>()
+                                      ?? gameObject.AddComponent<MeshFilter>();
+
+            if (!collisionMeshCollider)
+                collisionMeshCollider = GetComponent<MeshCollider>()
+                                        ?? gameObject.AddComponent<MeshCollider>();
+        }
+        void DebugDrawVoxel(Vector3 position)
+        {
+            debugVoxelPositions.Add(position);
+        }
+        void OnDrawGizmos()
+        {
+            if (debugVoxelPositions == null)
+                return;
+
+            Gizmos.color = Color.red;
+            foreach (var pos in debugVoxelPositions)
+            {
+                Gizmos.DrawCube(pos, Vector3.one * 0.5f);
+            }
         }
 
         // This method is called by the manager to assign the normals RenderTexture.
@@ -127,30 +163,51 @@ namespace MarchingCubesGPUProject
             public Vector4 position;
             public Vector3 normal;
         }
+
         public void ApplyDigAtLocal(Vector3 local, float radius)
         {
-            // Clamp the radius (if you wish)
             float maxDigRadius = 10.0f;
             radius = Mathf.Min(radius, maxDigRadius);
 
-            // Find the kernel for the dig compute shader.
             int kernel = m_digShader.FindKernel("CSMain");
-
-            // Set the dig parameters. Note that the compute shader expects local coordinates.
             m_digShader.SetFloat("_DigRadius", radius);
             m_digShader.SetVector("_DigPosition", local);
-
-            // Pass our density/noise buffer.
             m_digShader.SetBuffer(kernel, "_Noise", m_noiseBuffer);
 
-            // Calculate thread groups based on the padded width of the noise buffer.
             int paddedWidth = N + 1 + P * 2;
             int groups = Mathf.CeilToInt((float)paddedWidth / 8f);
             m_digShader.Dispatch(kernel, groups, groups, groups);
 
-            // After modifying the density, update normals and remesh.
+            // After modifying the density, update normals, remesh, and update collider
             Remesh();
         }
+        public void ApplyDigAtWorld(Vector3 worldHitPosition, float radius)
+        {
+            Vector3 localPos = worldHitPosition - ChunkWorldPosition;
+
+            float maxDigRadius = 10.0f;
+            radius = Mathf.Min(radius, maxDigRadius);
+
+            int kernel = m_digShader.FindKernel("CSMain");
+            int paddedWidth = N + 1 + P * 2;
+
+            // 🛠 You must set these 3 before dispatch!
+            m_digShader.SetInt("_Width", paddedWidth);
+            m_digShader.SetInt("_Height", paddedWidth);
+            m_digShader.SetInt("_Depth", paddedWidth);
+
+            m_digShader.SetFloat("_DigRadius", radius);
+            m_digShader.SetVector("_DigPosition", localPos);
+            m_digShader.SetBuffer(kernel, "_Noise", m_noiseBuffer);
+
+            int groups = Mathf.CeilToInt((float)paddedWidth / 8f);
+            m_digShader.Dispatch(kernel, groups, groups, groups);
+
+            m_noiseBuffer.GetData(cpuDensity);
+
+            Remesh();
+        }
+
 
         public bool RaymarchDig(Vector3 rayOrigin, Vector3 rayDir, float maxDistance, out Vector3 hitPos)
         {
@@ -187,17 +244,51 @@ namespace MarchingCubesGPUProject
             }
         }
 
-        public void DigAtWorldPosition(Vector3 worldPos, float radius)
-        {
-            // This method is called externally to dig at a given world position.
-            // It simply calls the per-chunk update.
-            ApplyDigAtLocal(worldPos - ChunkWorldPosition, radius);
-        }
-
         public void Remesh()
         {
             DispatchNormals();
             DispatchMesh();
+            UpdateCollisionMesh();  // NEW: Update collider after remeshing
+        }
+
+        // NEW: Create a collision mesh from the GPU-generated mesh data
+        void UpdateCollisionMesh()
+        {
+            Debug.Log($"Updating collision mesh with vertexCount = {m_actualVertexCount}");
+            if (m_actualVertexCount <= 0)
+                return;
+
+            // Our vertex layout: Vector4 (position) and Vector3 (normal) = 7 floats per vertex.
+            float[] meshData = new float[m_actualVertexCount * 7];
+            m_meshBuffer.GetData(meshData, 0, 0, meshData.Length);
+
+            Vector3[] vertices = new Vector3[m_actualVertexCount];
+            int[] triangles = new int[m_actualVertexCount];
+
+            for (int i = 0; i < m_actualVertexCount; i++)
+            {
+                vertices[i] = new Vector3(
+                    meshData[i * 7],
+                    meshData[i * 7 + 1],
+                    meshData[i * 7 + 2]
+                );
+                // Assuming that the vertices form triangles consecutively (every 3 vertices is a triangle).
+                triangles[i] = i;
+            }
+
+            Mesh collisionMesh = new Mesh();
+            collisionMesh.vertices = vertices;
+            collisionMesh.triangles = triangles;
+            collisionMesh.RecalculateNormals();
+
+            if (collisionMeshFilter != null)
+                collisionMeshFilter.mesh = collisionMesh;
+
+            if (collisionMeshCollider != null)
+            {
+                collisionMeshCollider.sharedMesh = null; // Reset collider
+                collisionMeshCollider.sharedMesh = collisionMesh;
+            }
         }
 
         void DispatchNormals()
@@ -262,6 +353,31 @@ namespace MarchingCubesGPUProject
             m_digShader.Dispatch(kernel, dispatchDims.x, dispatchDims.y, dispatchDims.z);
 
             Debug.Log($"[CopyBorderFrom] From: {other.ChunkCoord} → {ChunkCoord}, axis: {faceAxis}, source: {sourceCoord}, target: {targetCoord}");
+        }
+        public float SampleDensityAtWorldPosition(Vector3 worldPos)
+        {
+            Vector3 localPos = worldPos - ChunkWorldPosition;
+            int padded = N + 1 + P * 2;
+            int x = Mathf.FloorToInt(localPos.x) + P;
+            int y = Mathf.FloorToInt(localPos.y) + P;
+            int z = Mathf.FloorToInt(localPos.z) + P;
+
+            if (x < 0 || y < 0 || z < 0 || x >= padded || y >= padded || z >= padded)
+                return -1f;
+
+            int index = x + y * padded + z * padded * padded;
+
+            if (cpuDensity == null || index < 0 || index >= cpuDensity.Length)
+                return -1f;
+
+            float d = cpuDensity[index];
+
+            if (ChunkWorldPosition.y < 0f)  // Only print if underground
+            {
+                Debug.Log($"[Density] {ChunkCoord} sample at {worldPos} = {d}");
+            }
+
+            return d;
         }
     }
 }
