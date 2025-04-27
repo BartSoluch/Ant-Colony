@@ -45,7 +45,7 @@ public class ChunkManager : MonoBehaviour
             }
         }
 
-        //After all chunks have been created, sync their borders
+        // After all chunks created
         for (int x = 0; x < worldSizeX; x++)
         {
             for (int y = 0; y < worldSizeY; y++)
@@ -53,10 +53,12 @@ public class ChunkManager : MonoBehaviour
                 for (int z = 0; z < worldSizeZ; z++)
                 {
                     MarchingCubesGPU chunk = chunks[x, y, z];
-                    if (chunk != null)
-                    {
-                        SyncBorderVoxels(chunk, x, y, z);
-                    }
+                    if (chunk == null) continue;
+
+                    // ONLY sync to positive neighbors to avoid double copying
+                    if (x + 1 < worldSizeX) SyncSharedFace(chunk, chunks[x + 1, y, z], Vector3Int.right);
+                    if (y + 1 < worldSizeY) SyncSharedFace(chunk, chunks[x, y + 1, z], Vector3Int.up);
+                    if (z + 1 < worldSizeZ) SyncSharedFace(chunk, chunks[x, y, z + 1], Vector3Int.forward);
                 }
             }
         }
@@ -125,48 +127,55 @@ public class ChunkManager : MonoBehaviour
 
         for (int x = minX; x <= maxX; x++)
         {
-            for (int y = minY; y <= maxY; y++)
+            for (int y = Mathf.Max(minY, 0); y <= maxY; y++)
             {
                 for (int z = minZ; z <= maxZ; z++)
                 {
-                    // Check if these chunk coordinates are within our world bounds.
                     if (x < 0 || y < 0 || z < 0 || x >= worldSizeX || y >= worldSizeY || z >= worldSizeZ)
                         continue;
+
                     MarchingCubesGPU chunk = GetChunk(x, y, z);
                     if (chunk == null)
                         continue;
-                    // Compute the dig position in the chunk’s local space.
+
                     Vector3 localHit = worldPos - chunk.ChunkWorldPosition;
-                    // Have the chunk update its own density buffer.
+
                     chunk.ApplyDigAtWorld(worldPos, radius);
-                    // Update any shared border voxels (if needed).
-                    SyncBorderVoxels(chunk, x, y, z);
-                    // Optionally remesh neighboring chunks that might be affected.
-                    RemeshBorderingChunks(x, y, z, localHit, radius);
+
+                    SyncBorderVoxels(chunk, x, y, z); // sync borders
+                    RemeshBorderingChunks(x, y, z, localHit, radius); // also remesh neighbors
                 }
             }
         }
     }
-
     public void SyncBorderVoxels(MarchingCubesGPU sourceChunk, int cx, int cy, int cz)
     {
         Vector3Int[] directions = {
-            new Vector3Int(-1, 0, 0), new Vector3Int(1, 0, 0),
-            new Vector3Int(0, -1, 0), new Vector3Int(0, 1, 0),
-            new Vector3Int(0, 0, -1), new Vector3Int(0, 0, 1)
-        };
+        new Vector3Int(1, 0, 0),  // right (+X)
+        new Vector3Int(0, 1, 0),  // up (+Y)
+        new Vector3Int(0, 0, 1)   // forward (+Z)
+    };
 
         foreach (Vector3Int dir in directions)
         {
             int nx = cx + dir.x;
-            int ny = cy - dir.y;
+            int ny = cy + dir.y;
             int nz = cz + dir.z;
+
+            // Only sync if the neighbor exists
             if (nx < 0 || ny < 0 || nz < 0 || nx >= worldSizeX || ny >= worldSizeY || nz >= worldSizeZ)
                 continue;
+
             var neighborChunk = chunks[nx, ny, nz];
-            SyncSharedFace(sourceChunk, neighborChunk, dir);
-            Debug.Log($"[SyncBorder] {sourceChunk.ChunkCoord} syncing to neighbor {neighborChunk.ChunkCoord}");
+            if (neighborChunk != null)
+            {
+                SyncSharedFace(sourceChunk, neighborChunk, dir);  // copy FROM sourceChunk TO neighborChunk
+                neighborChunk.Remesh(); // after syncing, remesh neighbor
+            }
         }
+
+        // Also remesh the sourceChunk AFTER syncing
+        sourceChunk.Remesh();
     }
 
     public void RemeshBorderingChunks(int cx, int cy, int cz, Vector3 localPos, float radius)
@@ -193,26 +202,16 @@ public class ChunkManager : MonoBehaviour
         if (nearMinZ) Remesh(cx, cy, cz - 1);
         if (nearMaxZ) Remesh(cx, cy, cz + 1);
     }
-
     void SyncSharedFace(MarchingCubesGPU from, MarchingCubesGPU to, Vector3Int direction)
     {
-        // Use the correct interior edge; for our density field this should be N
         int edge = MarchingCubesGPU.N;
 
         if (direction == Vector3Int.right)
-            to.CopyBorderFrom(from, faceAxis: 0, sourceCoord: edge, targetCoord: 0);
-        else if (direction == Vector3Int.left)
-            to.CopyBorderFrom(from, faceAxis: 0, sourceCoord: 0, targetCoord: edge);
+            to.CopyBorderFrom(from, faceAxis: 0, sourceCoord: edge, targetCoord: 0); // X axis
         else if (direction == Vector3Int.up)
-            to.CopyBorderFrom(from, faceAxis: 1, sourceCoord: edge, targetCoord: 0);
-        else if (direction == Vector3Int.down)
-            to.CopyBorderFrom(from, faceAxis: 1, sourceCoord: 0, targetCoord: edge);
+            to.CopyBorderFrom(from, faceAxis: 1, sourceCoord: edge, targetCoord: 0); // Y axis
         else if (direction == Vector3Int.forward)
-            to.CopyBorderFrom(from, faceAxis: 2, sourceCoord: edge, targetCoord: 0);
-        else if (direction == Vector3Int.back)
-            to.CopyBorderFrom(from, faceAxis: 2, sourceCoord: 0, targetCoord: edge);
-
-        to.Remesh();
+            to.CopyBorderFrom(from, faceAxis: 2, sourceCoord: edge, targetCoord: 0); // Z axis
     }
 
 }
