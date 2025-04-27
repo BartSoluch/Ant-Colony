@@ -41,6 +41,9 @@ namespace MarchingCubesGPUProject
 
         private List<Vector3> debugVoxelPositions = new List<Vector3>();
 
+        public int dirtyVoxels = 0; // How many voxels got touched
+        public bool needsRemesh => dirtyVoxels > (0.1f * Mathf.Pow(N, 3)); // 10% threshold
+
         void Start()
         {
             Debug.Log("Marching Cubes GPU: Start() called");
@@ -198,7 +201,6 @@ namespace MarchingCubesGPUProject
             int kernel = m_digShader.FindKernel("CSMain");
             int paddedWidth = N + 1 + P * 2;
 
-            // 🛠 You must set these 3 before dispatch!
             m_digShader.SetInt("_Width", paddedWidth);
             m_digShader.SetInt("_Height", paddedWidth);
             m_digShader.SetInt("_Depth", paddedWidth);
@@ -212,9 +214,17 @@ namespace MarchingCubesGPUProject
 
             m_noiseBuffer.GetData(cpuDensity);
 
+            // Instead of full remesh: remesh a **small local mesh** if possible
+            RemeshSmallArea(localPos, radius);
+
+            dirtyVoxels += Mathf.FloorToInt(Mathf.PI * Mathf.Pow(radius, 3)); // Still track dirtyness
+        }
+        void RemeshSmallArea(Vector3 localCenter, float radius)
+        {
+            // (Optional) You can implement *partial remesh* in your compute shader for extra performance.
+            // But for now: just normal Remesh for now.
             Remesh();
         }
-
 
         public bool RaymarchDig(Vector3 rayOrigin, Vector3 rayDir, float maxDistance, out Vector3 hitPos)
         {

@@ -179,31 +179,13 @@ public class ChunkManager : MonoBehaviour
             MarchingCubesGPU chunk = GetChunk(coord.x, coord.y, coord.z);
             if (chunk != null)
             {
-                chunk.Remesh();
+                if (chunk.dirtyVoxels > 0.5f * Mathf.Pow(MarchingCubesGPU.N, 3)) // 50% modified
+                {
+                    chunk.Remesh(); // Full Remesh as maintenance
+                    chunk.dirtyVoxels = 0;
+                }
             }
         }
-    }
-
-    void RemeshNeighborChunks(int cx, int cy, int cz)
-    {
-        void Remesh(int x, int y, int z)
-        {
-            if (x < 0 || y < 0 || z < 0 ||
-                x >= worldSizeX || y >= worldSizeY || z >= worldSizeZ)
-                return;
-
-            if (chunks[x, y, z] != null)
-                chunks[x, y, z].Remesh();
-        }
-
-        // Remesh self and all 6 direct neighbors
-        Remesh(cx, cy, cz);       // Self
-        Remesh(cx + 1, cy, cz);   // +X
-        Remesh(cx - 1, cy, cz);   // -X
-        Remesh(cx, cy + 1, cz);   // +Y
-        Remesh(cx, cy - 1, cz);   // -Y
-        Remesh(cx, cy, cz + 1);   // +Z
-        Remesh(cx, cy, cz - 1);   // -Z
     }
 
     public void SyncBorderVoxels(MarchingCubesGPU sourceChunk, int cx, int cy, int cz)
@@ -233,23 +215,6 @@ public class ChunkManager : MonoBehaviour
                 SyncSharedFace(neighborChunk, sourceChunk, -dir);
             }
         }
-    }
-
-    void RemeshBorderingChunks(int cx, int cy, int cz)
-    {
-        void Remesh(int x, int y, int z)
-        {
-            if (x < 0 || y < 0 || z < 0 ||
-                x >= worldSizeX || y >= worldSizeY || z >= worldSizeZ)
-                return;
-            if (chunks[x, y, z] != null)
-                chunks[x, y, z].Remesh();
-        }
-
-        Remesh(cx, cy, cz);         // Self
-        Remesh(cx + 1, cy, cz);      // Right neighbor
-        Remesh(cx, cy + 1, cz);      // Up neighbor
-        Remesh(cx, cy, cz + 1);      // Forward neighbor
     }
 
     void SyncSharedFace(MarchingCubesGPU from, MarchingCubesGPU to, Vector3Int direction)
