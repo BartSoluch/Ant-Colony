@@ -15,7 +15,9 @@ public class TimeScaleController : MonoBehaviour
     void UpdateTimeScale(float value)
     {
         Time.timeScale = value;
+        Time.fixedDeltaTime = 0.02f * Time.timeScale;
         if (label != null)
             label.text = $"Speed: {value:0.0}x";
     }
+
 }

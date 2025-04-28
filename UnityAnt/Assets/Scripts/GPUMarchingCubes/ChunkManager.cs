@@ -10,6 +10,11 @@ public class ChunkManager : MonoBehaviour
     public int worldSizeY = 1;
     public int worldSizeZ = 2;
 
+    [Header("Terrain Generation Settings")]
+    public int seed = 0;
+    public float frequency = 0.005f;
+    public float groundVariationMultiplier = 0.5f;
+    public float baseGroundHeightMultiplier = 2.5f;
 
     private MarchingCubesGPU[,,] chunks;
     // A dictionary to hold a normals RenderTexture for each chunk.
@@ -33,11 +38,14 @@ public class ChunkManager : MonoBehaviour
                     Vector3Int coord = new Vector3Int(x, y, z);
                     mc.ChunkCoord = coord;
                     mc.ChunkWorldPosition = chunk.transform.position;
+                    mc.m_seed = seed;
 
                     RenderTexture normalsBuffer = CreateNormalsBuffer();
                     normalsPool[coord] = normalsBuffer;
                     mc.SetNormalsBuffer(normalsBuffer);
                     mc.SetChunkManager(this);
+                    mc.groundVariationMultiplier = groundVariationMultiplier;
+                    mc.baseGroundHeightMultiplier = baseGroundHeightMultiplier;
 
                     Debug.Log($"Chunk {coord} → worldPos = {chunk.transform.position}");
                 }

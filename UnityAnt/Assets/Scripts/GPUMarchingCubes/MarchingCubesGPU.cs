@@ -44,6 +44,13 @@ namespace MarchingCubesGPUProject
         public int dirtyVoxels = 0; // How many voxels got touched
         public bool needsRemesh => dirtyVoxels > (0.1f * Mathf.Pow(N, 3)); // 10% threshold
 
+        [HideInInspector] public float frequency = 0.005f;
+        [HideInInspector] public float groundVariationMultiplier = 0.5f;
+        [HideInInspector] public float baseGroundHeightMultiplier = 2.5f;
+
+        private float[] waterGradient; // same size as density field
+        private float[] co2Gradient;
+
         void Start()
         {
             Debug.Log("Marching Cubes GPU: Start() called");
@@ -66,12 +73,22 @@ namespace MarchingCubesGPUProject
             // Initialize the flat density array using Perlin noise (or your desired method)
             float[] flatDensity = new float[voxelCount];
             float frequency = 0.005f;
-            float groundVariation = N * 0.5f;  // 32
-            float baseGroundHeight = N * 2.5f; // 64 * 2.5 = 160
+            float groundVariation = N * groundVariationMultiplier;
+            float baseGroundHeight = N * baseGroundHeightMultiplier;
 
+            // Get deterministic terrain offsets
             Random.InitState(m_seed);
             float offsetX = Random.Range(0f, 1000f);
             float offsetZ = Random.Range(0f, 1000f);
+
+            // Get deterministic water and CO2 offsets without Random
+            float waterOffsetX = Mathf.Abs(Mathf.Sin((m_seed + 100) * 12.9898f) * 43758.5453f) % 1000f;
+            float waterOffsetZ = Mathf.Abs(Mathf.Sin((m_seed + 200) * 78.233f) * 43758.5453f) % 1000f;
+            float co2OffsetX = Mathf.Abs(Mathf.Sin((m_seed + 300) * 45.164f) * 43758.5453f) % 1000f;
+            float co2OffsetZ = Mathf.Abs(Mathf.Sin((m_seed + 400) * 31.416f) * 43758.5453f) % 1000f;
+
+            waterGradient = new float[voxelCount];
+            co2Gradient = new float[voxelCount];
 
             for (int z = 0; z < densityWidth; z++)
             {
@@ -96,6 +113,9 @@ namespace MarchingCubesGPUProject
                         }
 
                         flatDensity[i] = density;
+
+                        waterGradient[i] = Mathf.Clamp01(1.0f - (worldY / (N * 5f)));
+                        co2Gradient[i] = Mathf.Clamp01(worldY / (N * 5f));
                     }
                 }
             }
@@ -108,6 +128,44 @@ namespace MarchingCubesGPUProject
 
             Debug.Log("Marching Cubes GPU: Dispatched all shaders");
         }
+        public float SampleWaterAtWorldPosition(Vector3 worldPos)
+        {
+            Vector3 localPos = worldPos - ChunkWorldPosition;
+            int padded = N + 1 + P * 2;
+            int x = Mathf.FloorToInt(localPos.x) + P;
+            int y = Mathf.FloorToInt(localPos.y) + P;
+            int z = Mathf.FloorToInt(localPos.z) + P;
+
+            if (x < 0 || y < 0 || z < 0 || x >= padded || y >= padded || z >= padded)
+                return 0f;
+
+            int index = x + y * padded + z * padded * padded;
+
+            if (waterGradient == null || index < 0 || index >= waterGradient.Length)
+                return 0f;
+
+            return waterGradient[index];
+        }
+
+        public float SampleCO2AtWorldPosition(Vector3 worldPos)
+        {
+            Vector3 localPos = worldPos - ChunkWorldPosition;
+            int padded = N + 1 + P * 2;
+            int x = Mathf.FloorToInt(localPos.x) + P;
+            int y = Mathf.FloorToInt(localPos.y) + P;
+            int z = Mathf.FloorToInt(localPos.z) + P;
+
+            if (x < 0 || y < 0 || z < 0 || x >= padded || y >= padded || z >= padded)
+                return 0f;
+
+            int index = x + y * padded + z * padded * padded;
+
+            if (co2Gradient == null || index < 0 || index >= co2Gradient.Length)
+                return 0f;
+
+            return co2Gradient[index];
+        }
+
         void Awake()
         {
             // Attempt to auto-assign if they're missing

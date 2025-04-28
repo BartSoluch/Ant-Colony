@@ -217,10 +217,29 @@ public class AntAgent : MonoBehaviour
             Vector3Int check = current + offset;
             float digPhero = PheromoneField.Instance.GetDig(check);
             float trailPhero = PheromoneField.Instance.GetTrail(check);
-            float score = digPhero + 0.1f - trailPhero * 0.5f;
 
-            if (offset.y < 0) score += 0.2f;
-            if (check.y < 2 && check.y > -10) score += 0.3f;
+            // Sample environment
+            ChunkManager chunkManager = FindFirstObjectByType<ChunkManager>();
+            if (chunkManager == null)
+                continue;
+
+            MarchingCubesGPU chunk = chunkManager.GetChunkAtWorldPosition(check);
+            if (chunk == null)
+                continue;
+
+            float water = chunk.SampleWaterAtWorldPosition(check);
+            float co2 = chunk.SampleCO2AtWorldPosition(check);
+
+            // Environmental score
+            float envScore = 0f;
+            envScore += water * 0.8f;  // Prefer moist areas
+            envScore -= co2 * 0.5f;    // Avoid high CO2 areas
+
+            // Overall score
+            float score = digPhero + 0.1f - trailPhero * 0.5f + envScore;
+
+            if (offset.y < 0) score += 0.2f; // Prefer downward digging
+            if (check.y < 2 && check.y > -10) score += 0.3f; // Stay near interesting depth
 
             if (score > bestScore)
             {
