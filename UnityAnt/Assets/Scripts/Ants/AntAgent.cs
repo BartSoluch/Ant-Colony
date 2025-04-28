@@ -75,12 +75,12 @@ public class AntAgent : MonoBehaviour
             lastDirectionUpdateTime = Time.time;
         }
 
-        //Vector3Int bestDigTarget = GetBestDigTarget();
-        //if (bestDigTarget != Vector3Int.zero)
-        //{
-        //    currentDirection = ((Vector3)(bestDigTarget - Vector3Int.FloorToInt(transform.position))).normalized;
-        //    currentState = State.Digging;
-        //}
+        Vector3Int bestDigTarget = GetBestDigTarget();
+        if (bestDigTarget != Vector3Int.zero)
+        {
+            currentDirection = ((Vector3)(bestDigTarget - Vector3Int.FloorToInt(transform.position))).normalized;
+            currentState = State.Digging;
+        }
     }
 
     void ApplyStickyGravitySDF()
@@ -95,19 +95,21 @@ public class AntAgent : MonoBehaviour
 
         if (densityAtCurrent > 0.1f)
         {
-            // Inside solid terrain: push outward
+            // Inside solid: push outward
             transform.position -= normal * Time.deltaTime * 3f;
         }
         else if (densityBelow > 0.1f)
         {
-            // Ground is below: gently adjust height over time to reduce jitter
-            Vector3 targetPos = pos;
-            targetPos.y = Mathf.Lerp(pos.y, (pos + Vector3.up * 1.5f).y, Time.deltaTime * 5f); // 👈 notice soft blending
-            transform.position = Vector3.Lerp(transform.position, targetPos, Time.deltaTime * 5f); // 👈 second lerp for extra smoothing
+            // Ground is close below: gently float above it
+            Vector3 groundPoint = pos + down * 0.5f;
+            Vector3 targetPos = new Vector3(pos.x, groundPoint.y + 1.5f, pos.z); // 1.5f hover
+
+            // Heavy smoothing to avoid jitter
+            transform.position = Vector3.Lerp(transform.position, targetPos, Time.deltaTime * 4f);
         }
         else
         {
-            // No ground below: gently fall down
+            // No ground below: fall
             transform.position += Vector3.down * Time.deltaTime * 2f;
         }
     }
