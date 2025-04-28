@@ -1,4 +1,6 @@
+using System.Collections;
 using UnityEngine;
+using MarchingCubesGPUProject; // Needed for ChunkManager reference
 
 public class AntSpawner : MonoBehaviour
 {
@@ -7,23 +9,86 @@ public class AntSpawner : MonoBehaviour
 
     void Start()
     {
-        // Try to locate the ChunkManager
+        StartCoroutine(WaitAndSpawn());
+    }
+
+    IEnumerator WaitAndSpawn()
+    {
         ChunkManager chunkManager = FindFirstObjectByType<ChunkManager>();
         if (chunkManager == null)
         {
-            Debug.LogError("ChunkManager not found. Cannot determine center world position.");
-            return;
+            Debug.LogError("ChunkManager not found. Cannot determine world center.");
+            yield break;
         }
 
-        // For example, assume the world center is at the ChunkManager's position.
-        // Adjust this if your world center is determined differently.
-        Vector3 center = chunkManager.transform.position;
+        yield return new WaitForSeconds(0.5f); // Wait for marching cubes to generate
+
+        int chunkSize = ChunkManager.chunkSize;
+        Vector3 worldDimensions = new Vector3(
+            chunkManager.worldSizeX * chunkSize,
+            chunkManager.worldSizeY * chunkSize,
+            chunkManager.worldSizeZ * chunkSize
+        );
+
+        float topY = chunkManager.worldSizeY * chunkSize;
+
+        Vector3 centerXZ = new Vector3(
+            worldDimensions.x / 2f,
+            0f,
+            worldDimensions.z / 2f
+        );
 
         for (int i = 0; i < numberOfAnts; i++)
         {
-            Vector3 spawnPos = center + Random.insideUnitSphere * 2f;
-            spawnPos.y = center.y; // ensure spawning on the same horizontal level as the center
-            Instantiate(antPrefab, spawnPos, Quaternion.identity);
+            Vector2 randomCircle = Random.insideUnitCircle * 10f; // Larger spread if you want
+            Vector3 spawnPos = new Vector3(
+                centerXZ.x + randomCircle.x,
+                topY,
+                centerXZ.z + randomCircle.y
+            );
+
+            if (FindSurfaceBelow(ref spawnPos))
+            {
+                GameObject ant = Instantiate(antPrefab, spawnPos, Quaternion.identity);
+                Debug.Log($"Spawned Ant {i} at {spawnPos}");
+            }
+            else
+            {
+                Debug.LogWarning($"⚠️ Could not find ground for Ant {i}, skipping.");
+            }
         }
+    }
+
+    bool FindSurfaceBelow(ref Vector3 spawnPos)
+    {
+        ChunkManager chunkManager = FindFirstObjectByType<ChunkManager>();
+        if (chunkManager == null)
+            return false;
+
+        float step = 0.5f;
+        float maxDistance = 100f;
+        Vector3 checkPos = spawnPos;
+        bool wasAir = true; // Assume starting in air
+
+        for (float y = 0; y < maxDistance; y += step)
+        {
+            checkPos.y -= step;
+            MarchingCubesGPU chunk = chunkManager.GetChunkAtWorldPosition(checkPos);
+            if (chunk == null)
+                continue;
+
+            float density = chunk.SampleDensityAtWorldPosition(checkPos);
+
+            if (wasAir && density > 0f)
+            {
+                // Found air -> ground transition!
+                spawnPos = checkPos + Vector3.up * 1.5f; // Place just above ground
+                return true;
+            }
+
+            wasAir = density < 0f;
+        }
+
+        return false;
     }
 }

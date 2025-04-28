@@ -428,9 +428,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   chunkPrefab: {fileID: 7459184397080430676, guid: faffb00ef123fed4b868dbbe24797a78, type: 3}
-  worldSizeX: 2
-  worldSizeY: 2
-  worldSizeZ: 1
+  worldSizeX: 3
+  worldSizeY: 3
+  worldSizeZ: 3
 --- !u!4 &2104555791
 Transform:
   m_ObjectHideFlags: 0
