@@ -329,7 +329,7 @@ namespace MarchingCubesGPUProject
         // NEW: Create a collision mesh from the GPU-generated mesh data
         void UpdateCollisionMesh()
         {
-            Debug.Log($"Updating collision mesh with vertexCount = {m_actualVertexCount}");
+            //Debug.Log($"Updating collision mesh with vertexCount = {m_actualVertexCount}");
             if (m_actualVertexCount <= 0)
                 return;
 
@@ -402,7 +402,7 @@ namespace MarchingCubesGPUProject
             m_vertexCountBuffer.GetData(count);
             m_actualVertexCount = count[0];
 
-            Debug.Log($"[GPU Draw] Vertex Count: {m_actualVertexCount}");
+            //Debug.Log($"[GPU Draw] Vertex Count: {m_actualVertexCount}");
         }
 
         public void CopyBorderFrom(MarchingCubesGPU other, int faceAxis, int sourceCoord, int targetCoord)
@@ -427,7 +427,7 @@ namespace MarchingCubesGPUProject
 
             m_digShader.Dispatch(kernel, dispatchDims.x, dispatchDims.y, dispatchDims.z);
 
-            Debug.Log($"[CopyBorderFrom] From: {other.ChunkCoord} → {ChunkCoord}, axis: {faceAxis}, source: {sourceCoord}, target: {targetCoord}");
+            //Debug.Log($"[CopyBorderFrom] From: {other.ChunkCoord} → {ChunkCoord}, axis: {faceAxis}, source: {sourceCoord}, target: {targetCoord}");
         }
         public float SampleDensityAtWorldPosition(Vector3 worldPos)
         {
@@ -447,7 +447,7 @@ namespace MarchingCubesGPUProject
 
             float d = cpuDensity[index];
 
-            Debug.Log($"[Density] {ChunkCoord} sample at {worldPos} = {d}");
+            //Debug.Log($"[Density] {ChunkCoord} sample at {worldPos} = {d}");
 
             return d;
         }

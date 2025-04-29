@@ -47,7 +47,7 @@ public class ChunkManager : MonoBehaviour
                     mc.groundVariationMultiplier = groundVariationMultiplier;
                     mc.baseGroundHeightMultiplier = baseGroundHeightMultiplier;
 
-                    Debug.Log($"Chunk {coord} → worldPos = {chunk.transform.position}");
+                    //Debug.Log($"Chunk {coord} → worldPos = {chunk.transform.position}");
                 }
             }
         }
@@ -58,7 +58,7 @@ public class ChunkManager : MonoBehaviour
 
     void LateSyncChunks()
     {
-        Debug.Log("[ChunkManager] Performing late chunk border syncing...");
+        //Debug.Log("[ChunkManager] Performing late chunk border syncing...");
 
         for (int x = 0; x < worldSizeX; x++)
         {
@@ -107,7 +107,7 @@ public class ChunkManager : MonoBehaviour
         int y = Mathf.FloorToInt(worldPos.y / chunkSize);
         int z = Mathf.FloorToInt(worldPos.z / chunkSize);
 
-        Debug.Log($"[ChunkManager] Lookup chunk at ({x},{y},{z})");
+        //Debug.Log($"[ChunkManager] Lookup chunk at ({x},{y},{z})");
 
         if (x < 0 || y < 0 || z < 0 || x >= worldSizeX || y >= worldSizeY || z >= worldSizeZ)
             return null;

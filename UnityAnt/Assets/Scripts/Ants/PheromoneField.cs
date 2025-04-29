@@ -8,10 +8,13 @@ public class PheromoneField : MonoBehaviour
 
     private float[,,] digPheromones;
     private float[,,] trailPheromones;
+    private float[,,] nestPheromones;
+
     private Vector3Int worldSize;
 
     public float decayRate = 0.1f;
     public float trailDecayRate = 0.05f;
+
 
     [Header("Visuals")]
     public GameObject pheromoneVisualPrefab;  // Assign in Inspector
@@ -43,6 +46,7 @@ public class PheromoneField : MonoBehaviour
 
         digPheromones = new float[worldSize.x, worldSize.y, worldSize.z];
         trailPheromones = new float[worldSize.x, worldSize.y, worldSize.z];
+        nestPheromones = new float[worldSize.x, worldSize.y, worldSize.z];
     }
 
     void Update()
@@ -58,6 +62,7 @@ public class PheromoneField : MonoBehaviour
                 {
                     digPheromones[x, y, z] = Mathf.Max(0, digPheromones[x, y, z] - digDecay);
                     trailPheromones[x, y, z] = Mathf.Max(0, trailPheromones[x, y, z] - trailDecay);
+                    nestPheromones[x, y, z] = Mathf.Max(0, nestPheromones[x, y, z] - (decayRate * 0.5f) * Time.deltaTime);
                 }
     }
 
@@ -105,6 +110,9 @@ public class PheromoneField : MonoBehaviour
 
     public float GetDig(Vector3Int pos) => InternalGet(digPheromones, pos);
     public float GetTrail(Vector3Int pos) => InternalGet(trailPheromones, pos);
+    public void DepositNest(Vector3 worldPos, float amount) => InternalDeposit(nestPheromones, worldPos, amount);
+    public float GetNest(Vector3Int pos) => InternalGet(nestPheromones, pos);
+
 
     // Helpers
     private void InternalDeposit(float[,,] grid, Vector3 worldPos, float amount)

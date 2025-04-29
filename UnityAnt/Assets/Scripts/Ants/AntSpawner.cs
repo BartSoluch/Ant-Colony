@@ -61,7 +61,7 @@ public class AntSpawner : MonoBehaviour
         // === Spawn Worker/Scout Ants ===
         for (int i = 0; i < numberOfAnts; i++)
         {
-            Vector2 randomCircle = Random.insideUnitCircle * 5f; // Moderate spread near queen
+            Vector2 randomCircle = Random.insideUnitCircle * 10f; // Moderate spread near queen
             Vector3 spawnPos = new Vector3(
                 centerXZ.x + randomCircle.x,
                 topY,

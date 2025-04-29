@@ -1,15 +1,23 @@
+// === GameManager.cs (Fully Realistic, No Role Switching) ===
 using UnityEngine;
 using System.Collections.Generic;
+using MarchingCubesGPUProject;
 
 public class GameManager : MonoBehaviour
 {
     public static GameManager Instance { get; private set; }
 
+    [Header("Ant Colony Settings")]
     [Range(0f, 1f)] public float scoutRatio = 0.1f;
-    public int maxAnts = 100;
+    public int baseMaxAnts = 50;
+    public float antsPerCubicMeter = 0.5f;
     public GameObject antPrefab;
 
     private List<AntAgent> allAnts = new();
+    private float dugVolume = 0f;
+    private int digCounter = 0;
+    public int digsPerColonyGrowth = 20;
+    public float colonyGrowthPerBatch = 2f;
 
     void Awake()
     {
@@ -17,11 +25,7 @@ public class GameManager : MonoBehaviour
         Instance = this;
     }
 
-    void Update()
-    {
-        RebalanceRoles();
-        TrySpawnAnt();
-    }
+    void Update() { }
 
     public void RegisterAnt(AntAgent ant)
     {
@@ -33,41 +37,61 @@ public class GameManager : MonoBehaviour
         allAnts.Remove(deadAnt);
     }
 
-    void RebalanceRoles()
+    public bool CanSpawnMoreAnts()
     {
-        int total = allAnts.Count;
-        if (total == 0) return;
+        return allAnts.Count < GetMaxAnts();
+    }
 
-        int desiredScouts = Mathf.RoundToInt(total * scoutRatio);
-        int currentScouts = allAnts.FindAll(a => a.currentRole == AntAgent.Role.Scout).Count;
+    public void RegisterDigEvent()
+    {
+        digCounter++;
 
-        if (currentScouts < desiredScouts)
+        if (digCounter >= digsPerColonyGrowth)
         {
-            var workersToSwitch = allAnts.FindAll(a => a.currentRole == AntAgent.Role.Worker);
-            int needed = desiredScouts - currentScouts;
-
-            for (int i = 0; i < needed && i < workersToSwitch.Count; i++)
-                workersToSwitch[i].currentRole = AntAgent.Role.Scout;
+            digCounter = 0;
+            dugVolume += colonyGrowthPerBatch;
         }
     }
 
-    void TrySpawnAnt()
+    public int GetMaxAnts()
     {
-        if (allAnts.Count >= maxAnts) return;
-
-        // Spawn logic goes here (e.g., near nest center)
-    }
-    public bool CanSpawnMoreAnts()
-    {
-        return allAnts.Count < maxAnts;
+        return baseMaxAnts + Mathf.RoundToInt(dugVolume * antsPerCubicMeter);
     }
 
-    public void SpawnAntAt(Vector3 position)
+    public float GetDugVolume()
+    {
+        return dugVolume;
+    }
+
+    public int GetCurrentAntCount()
+    {
+        return allAnts.Count;
+    }
+
+    public bool ShouldQueenLayEgg()
+    {
+        float idealAnts = dugVolume * antsPerCubicMeter;
+        float pressure = Mathf.Clamp01((idealAnts - GetCurrentAntCount()) / Mathf.Max(idealAnts, 1f));
+        float randomFactor = Random.Range(0f, 1f);
+        return (pressure + randomFactor * 0.5f) > 0.5f;
+    }
+
+    public AntAgent.Role DecideNextAntRole()
+    {
+        int workers = allAnts.FindAll(a => a.currentRole == AntAgent.Role.Worker).Count;
+        int scouts = allAnts.FindAll(a => a.currentRole == AntAgent.Role.Scout).Count;
+
+        if (workers < (allAnts.Count * 0.8f))
+            return AntAgent.Role.Worker;
+        else
+            return AntAgent.Role.Scout;
+    }
+
+    public void SpawnAntAt(Vector3 position, AntAgent.Role role)
     {
         GameObject ant = Instantiate(antPrefab, position, Quaternion.identity);
         AntAgent agent = ant.GetComponent<AntAgent>();
-        agent.currentRole = Random.value < scoutRatio ? AntAgent.Role.Scout : AntAgent.Role.Worker;
+        agent.currentRole = role;
         RegisterAnt(agent);
     }
-
 }
