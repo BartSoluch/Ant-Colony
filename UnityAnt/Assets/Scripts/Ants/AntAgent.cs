@@ -6,6 +6,15 @@ public class AntAgent : MonoBehaviour
 {
     public enum State { Roaming, Digging, Expanding }
     public enum Role { Worker, Scout, Queen }
+    public enum ChamberType
+    {
+        None,
+        FungusGarden,
+        Nursery,
+        WasteDump
+    }
+
+    public ChamberType currentChamberType = ChamberType.None;
 
     [Header("Settings")]
     public State currentState = State.Roaming;
@@ -165,7 +174,51 @@ public class AntAgent : MonoBehaviour
         chunkManager.DigAtWorldPosition(digPos, digRadius * 1.5f);
         PheromoneField.Instance.DepositDig(digPos, pheromoneDepositAmount * 1.5f);
 
+        // If no current chamber type, assign one
+        if (currentChamberType == ChamberType.None)
+        {
+            AssignChamberType(transform.position);
+            Debug.Log("Assigned Chamber: " + currentChamberType);
+        }
+
         currentState = State.Roaming;
+    }
+    void AssignChamberType(Vector3 position)
+    {
+        ChunkManager chunkManager = FindFirstObjectByType<ChunkManager>();
+        if (chunkManager == null) return;
+
+        MarchingCubesGPU chunk = chunkManager.GetChunkAtWorldPosition(position);
+        if (chunk == null) return;
+
+        float water = chunk.SampleWaterAtWorldPosition(position);
+        float co2 = chunk.SampleCO2AtWorldPosition(position);
+        float depth = position.y;
+
+        if (water > 0.5f && co2 < 0.3f && depth > 5f && depth < 20f)
+        {
+            currentChamberType = ChamberType.FungusGarden;
+        }
+        else if (water > 0.3f && water < 0.6f && depth > 10f && depth < 20f)
+        {
+            currentChamberType = ChamberType.Nursery;
+        }
+        else if (co2 > 0.5f && water < 0.3f && depth < 5f)
+        {
+            currentChamberType = ChamberType.WasteDump;
+        }
+        else
+        {
+            currentChamberType = ChamberType.None; // No special chamber
+        }
+    }
+
+    void TryRecoverEnergy()
+    {
+        if (currentChamberType == ChamberType.FungusGarden)
+        {
+            energy = Mathf.Min(energy + 20f * Time.deltaTime, 100f);
+        }
     }
 
     void Roam()
@@ -185,6 +238,7 @@ public class AntAgent : MonoBehaviour
         }
 
         EvaluateNestSite();
+        EvaluateChamberSite();
 
         PheromoneField.Instance.DepositTrail(transform.position, pheromoneDepositAmount * 0.25f);
 
@@ -203,6 +257,10 @@ public class AntAgent : MonoBehaviour
             else if (Random.value < 0.01f)
             {
                 currentState = State.Digging;
+            }
+            if (PheromoneField.Instance.GetChamber(Vector3Int.FloorToInt(transform.position)) > 2f)
+            {
+                currentState = State.Expanding;
             }
         }
 
@@ -226,6 +284,40 @@ public class AntAgent : MonoBehaviour
 
         if (nestScore > 0.5f)
             PheromoneField.Instance.DepositNest(transform.position, nestScore * 0.5f);
+    }
+    void EvaluateChamberSite()
+    {
+        Vector3Int pos = Vector3Int.FloorToInt(transform.position);
+
+        ChunkManager chunkManager = FindFirstObjectByType<ChunkManager>();
+        if (chunkManager == null) return;
+
+        MarchingCubesGPU chunk = chunkManager.GetChunkAtWorldPosition(pos);
+        if (chunk == null) return;
+
+        float water = chunk.SampleWaterAtWorldPosition(pos);
+        float co2 = chunk.SampleCO2AtWorldPosition(pos);
+        float depth = pos.y;
+
+        float chamberScore = 0f;
+
+        // Prefer fungus garden conditions
+        if (water > 0.6f && co2 < 0.3f && depth > 5f && depth < 20f)
+            chamberScore += 1.0f;
+
+        // Prefer nursery conditions
+        else if (water > 0.4f && water < 0.6f && co2 < 0.3f && depth > 10f && depth < 20f)
+            chamberScore += 0.8f;
+
+        // Prefer waste dump conditions
+        else if (water < 0.3f && co2 > 0.5f && depth < 5f)
+            chamberScore += 0.6f;
+
+        if (chamberScore > 0f)
+        {
+            Debug.Log($"Depositing chamber pheromone at {pos}: Water={water:F2}, CO₂={co2:F2}, Depth={depth:F2}");
+            PheromoneField.Instance.DepositChamber(transform.position, chamberScore * 0.5f);
+        }
     }
 
     Vector3Int GetBestTrailTarget(Vector3Int current)

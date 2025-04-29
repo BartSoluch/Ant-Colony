@@ -9,6 +9,7 @@ public class PheromoneField : MonoBehaviour
     private float[,,] digPheromones;
     private float[,,] trailPheromones;
     private float[,,] nestPheromones;
+    private float[,,] chamberPheromones;
 
     private Vector3Int worldSize;
 
@@ -107,11 +108,12 @@ public class PheromoneField : MonoBehaviour
     // Public API
     public void DepositDig(Vector3 worldPos, float amount) => InternalDeposit(digPheromones, worldPos, amount);
     public void DepositTrail(Vector3 worldPos, float amount) => InternalDeposit(trailPheromones, worldPos, amount);
-
     public float GetDig(Vector3Int pos) => InternalGet(digPheromones, pos);
     public float GetTrail(Vector3Int pos) => InternalGet(trailPheromones, pos);
     public void DepositNest(Vector3 worldPos, float amount) => InternalDeposit(nestPheromones, worldPos, amount);
     public float GetNest(Vector3Int pos) => InternalGet(nestPheromones, pos);
+    public void DepositChamber(Vector3 worldPos, float amount) => InternalDeposit(chamberPheromones, worldPos, amount);
+    public float GetChamber(Vector3Int pos) => InternalGet(chamberPheromones, pos);
 
 
     // Helpers
@@ -134,4 +136,5 @@ public class PheromoneField : MonoBehaviour
                pos.y >= 0 && pos.y < worldSize.y &&
                pos.z >= 0 && pos.z < worldSize.z;
     }
+
 }
