@@ -11,7 +11,6 @@ public class AntSpawner : MonoBehaviour
     {
         StartCoroutine(WaitAndSpawn());
     }
-
     IEnumerator WaitAndSpawn()
     {
         ChunkManager chunkManager = FindFirstObjectByType<ChunkManager>();
@@ -38,9 +37,31 @@ public class AntSpawner : MonoBehaviour
             worldDimensions.z / 2f
         );
 
+        // === Spawn Queen ===
+        Vector3 queenSpawnPos = new Vector3(
+            centerXZ.x,
+            topY,
+            centerXZ.z
+        );
+
+        if (FindSurfaceBelow(ref queenSpawnPos))
+        {
+            GameObject queen = Instantiate(antPrefab, queenSpawnPos, Quaternion.identity);
+            AntAgent queenAgent = queen.GetComponent<AntAgent>();
+            queenAgent.currentRole = AntAgent.Role.Queen;
+            GameManager.Instance.RegisterAnt(queenAgent);
+            Debug.Log("👑 Spawned Queen at " + queenSpawnPos);
+        }
+        else
+        {
+            Debug.LogError("❌ Could not place queen — aborting spawn.");
+            yield break;
+        }
+
+        // === Spawn Worker/Scout Ants ===
         for (int i = 0; i < numberOfAnts; i++)
         {
-            Vector2 randomCircle = Random.insideUnitCircle * 10f; // Larger spread if you want
+            Vector2 randomCircle = Random.insideUnitCircle * 5f; // Moderate spread near queen
             Vector3 spawnPos = new Vector3(
                 centerXZ.x + randomCircle.x,
                 topY,
@@ -50,7 +71,13 @@ public class AntSpawner : MonoBehaviour
             if (FindSurfaceBelow(ref spawnPos))
             {
                 GameObject ant = Instantiate(antPrefab, spawnPos, Quaternion.identity);
-                Debug.Log($"Spawned Ant {i} at {spawnPos}");
+                AntAgent agent = ant.GetComponent<AntAgent>();
+                agent.currentRole = Random.value < GameManager.Instance.scoutRatio
+                    ? AntAgent.Role.Scout
+                    : AntAgent.Role.Worker;
+
+                GameManager.Instance.RegisterAnt(agent);
+                Debug.Log($"Spawned {agent.currentRole} Ant {i} at {spawnPos}");
             }
             else
             {

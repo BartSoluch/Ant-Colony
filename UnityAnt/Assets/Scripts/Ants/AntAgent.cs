@@ -7,6 +7,8 @@ public class AntAgent : MonoBehaviour
 
     public State currentState = State.Roaming;
 
+    private Renderer outlineRenderer;
+
     [Header("Dig Settings")]
     public float digRadius = 1.2f;
     public float digCooldown = 2f;
@@ -21,18 +23,77 @@ public class AntAgent : MonoBehaviour
     private Vector3 currentDirection;
     private Vector3 smoothedNormal = Vector3.up;
 
+    [Header("Lifecycle")]
+    public float maxAge = 300f; // in seconds
+    public float energy = 100f;
+    public float energyDecayRate = 1f;
+    public float age = 0f;
+    public bool isDead = false;
+
+
     private Animator animator;
 
-    private float lockedSurfaceHeight;
-    private bool surfaceLocked = false;
+    public enum Role { Worker, Scout, Queen }
+    public Role currentRole = Role.Worker;
 
     void Start()
     {
         PickNewDirection();
         animator = GetComponentInChildren<Animator>();
+
+        Transform outlineMesh = transform.Find("Outline/__ant_4"); // Update if your structure changes
+        if (outlineMesh != null)
+        {
+            outlineRenderer = outlineMesh.GetComponent<Renderer>();
+        }
+
+        ApplyOutlineColor(); // Apply color based on currentRole
     }
 
     void Update()
+    {
+        if (isDead) return;
+
+        age += Time.deltaTime;
+        energy -= energyDecayRate * Time.deltaTime;
+
+        if (age >= maxAge || energy <= 0f)
+        {
+            Die();
+            return;
+        }
+
+        switch (currentRole)
+        {
+            case Role.Queen:
+                maxAge = 20 * 60f; // ~20 minutes in simulation
+                energyDecayRate = 0.25f;
+                HandleQueenBehavior();
+                break;
+
+            case Role.Worker:
+                maxAge = Random.Range(5f * 60f, 8f * 60f); // 5–8 minutes
+                energyDecayRate = 1.0f;
+                HandleWorkerBehavior();
+                break;
+
+            case Role.Scout:
+                maxAge = Random.Range(2f * 60f, 4f * 60f); // 2–4 minutes
+                energyDecayRate = 1.5f;
+                HandleScoutBehavior();
+                break;
+        }
+
+        ApplyStickyGravitySDF();
+    }
+    void Die()
+    {
+        isDead = true;
+        GameManager.Instance.NotifyAntDeath(this);
+        Destroy(gameObject); // or play animation first, then destroy
+    }
+
+    void HandleWorkerBehavior()
     {
         switch (currentState)
         {
@@ -40,14 +101,77 @@ public class AntAgent : MonoBehaviour
             case State.Digging: TryDig(); break;
             case State.Expanding: ExpandChamber(); break;
         }
+    }
+    void HandleScoutBehavior()
+    {
+        Vector3Int current = Vector3Int.FloorToInt(transform.position);
+        Vector3Int best = GetBestTrailTarget(current);
 
-        if (animator != null)
+        if (best != Vector3Int.zero)
         {
-            float animSpeed = currentState == State.Roaming ? 1f : 0f;
-            animator.SetFloat("Speed", animSpeed);
+            currentDirection = ((Vector3)(best - current)).normalized;
+        }
+        if (Time.time - lastDirectionUpdateTime > directionUpdateCooldown)
+        {
+            PickNewDirection(); // fallback randomness
+            lastDirectionUpdateTime = Time.time;
         }
 
-        ApplyStickyGravitySDF();
+        Roam(); // Uses currentDirection
+    }
+
+    [Header("Queen Settings")]
+    public float spawnInterval = 20f;
+    private float lastSpawnTime;
+
+    void HandleQueenBehavior()
+    {
+        // Remain idle
+        if (Time.time - lastSpawnTime > spawnInterval)
+        {
+            TryLayEgg();
+            lastSpawnTime = Time.time;
+        }
+    }
+    void TryLayEgg()
+    {
+        Vector3 spawnPos = transform.position + Random.insideUnitSphere * 2f;
+        spawnPos.y = transform.position.y; // Keep it on the same Y level
+
+        if (GameManager.Instance.CanSpawnMoreAnts())
+        {
+            GameManager.Instance.SpawnAntAt(spawnPos);
+        }
+    }
+
+    Vector3Int GetBestTrailTarget(Vector3Int current)
+    {
+        Vector3Int[] offsets = {
+        new(1, 0, 0), new(-1, 0, 0),
+        new(0, 0, 1), new(0, 0, -1),
+        new(1, 0, 1), new(-1, 0, -1),
+        new(1, 0, -1), new(-1, 0, 1)
+    };
+
+        float bestPhero = 0f;
+        Vector3Int bestPos = Vector3Int.zero;
+
+        foreach (var offset in offsets)
+        {
+            Vector3Int check = current + offset;
+            float trail = PheromoneField.Instance.GetTrail(check);
+            float dig = PheromoneField.Instance.GetDig(check); // Optional: weight if it’s a dug tunnel
+
+            float score = trail + dig * 0.5f;
+
+            if (score > bestPhero)
+            {
+                bestPhero = score;
+                bestPos = check;
+            }
+        }
+
+        return bestPhero > 0.1f ? bestPos : Vector3Int.zero;
     }
 
     void Roam()
@@ -60,10 +184,10 @@ public class AntAgent : MonoBehaviour
         Vector3 move = Vector3.ProjectOnPlane(currentDirection, smoothedNormal).normalized;
 
         transform.position += move * moveSpeed * Time.deltaTime;
-        Vector3 projectedForward = Vector3.ProjectOnPlane(currentDirection, Vector3.up).normalized;
+        Vector3 projectedForward = Vector3.ProjectOnPlane(currentDirection, -smoothedNormal).normalized;
         if (projectedForward.sqrMagnitude > 0.01f)
         {
-            Quaternion targetRot = Quaternion.LookRotation(projectedForward, Vector3.up);
+            Quaternion targetRot = Quaternion.LookRotation(projectedForward, -smoothedNormal);
             transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, Time.deltaTime * 8f);
         }
 
@@ -75,11 +199,14 @@ public class AntAgent : MonoBehaviour
             lastDirectionUpdateTime = Time.time;
         }
 
-        Vector3Int bestDigTarget = GetBestDigTarget();
-        if (bestDigTarget != Vector3Int.zero)
+        if (currentRole == Role.Worker)
         {
-            currentDirection = ((Vector3)(bestDigTarget - Vector3Int.FloorToInt(transform.position))).normalized;
-            currentState = State.Digging;
+            Vector3Int bestDigTarget = GetBestDigTarget();
+            if (bestDigTarget != Vector3Int.zero)
+            {
+                currentDirection = ((Vector3)(bestDigTarget - Vector3Int.FloorToInt(transform.position))).normalized;
+                currentState = State.Digging;
+            }
         }
     }
 
@@ -250,4 +377,31 @@ public class AntAgent : MonoBehaviour
 
         return bestScore > 0.15f ? bestTarget : Vector3Int.zero;
     }
+    void ApplyOutlineColor()
+    {
+        Renderer rend = GetComponentInChildren<Renderer>();
+        if (rend == null) return;
+
+        // Ensure each ant has its own instance of the material
+        if (!rend.material.name.Contains("Instance"))
+            rend.material = new Material(rend.material);
+
+        Color roleColor = Color.white;
+
+        switch (currentRole)
+        {
+            case Role.Queen:
+                roleColor = Color.magenta;
+                break;
+            case Role.Worker:
+                roleColor = Color.yellow;
+                break;
+            case Role.Scout:
+                roleColor = Color.cyan;
+                break;
+        }
+
+        rend.material.SetColor("_OutlineColor", roleColor); // Match Shader Graph property name
+    }
+
 }
