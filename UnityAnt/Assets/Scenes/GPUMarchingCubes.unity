@@ -652,7 +652,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   decayRate: 0.2
   trailDecayRate: 0.05
-  pheromoneVisualPrefab: {fileID: 0}
+  pheromoneVisualPrefab: {fileID: 4103891079993435170, guid: 3f7f4a119d00c4e408a63f9afe1137d0, type: 3}
 --- !u!4 &1109333876
 Transform:
   m_ObjectHideFlags: 0
@@ -925,8 +925,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 533cc0e89f6010545a01a248d7860425, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  antPrefab: {fileID: 2477574526353432753, guid: 54100055983378a40a666f3238ee74b7, type: 3}
-  numberOfAnts: 10
+  antPrefab: {fileID: 2477574526353432753, guid: 3588c64fc0dc1554a8ceaa559ed17cb4, type: 3}
+  numberOfAnts: 5
 --- !u!4 &1488778921
 Transform:
   m_ObjectHideFlags: 0
@@ -1047,8 +1047,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   scoutRatio: 0.1
-  maxAnts: 100
-  antPrefab: {fileID: 2477574526353432753, guid: 54100055983378a40a666f3238ee74b7, type: 3}
+  baseMaxAnts: 10
+  antsPerCubicMeter: 0.5
+  antPrefab: {fileID: 2477574526353432753, guid: 3588c64fc0dc1554a8ceaa559ed17cb4, type: 3}
+  digsPerColonyGrowth: 20
+  colonyGrowthPerBatch: 2
 --- !u!4 &1998860560
 Transform:
   m_ObjectHideFlags: 0
