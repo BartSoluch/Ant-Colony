@@ -20,9 +20,15 @@ public class AntAgent : MonoBehaviour
     public State currentState = State.Roaming;
     public Role currentRole = Role.Worker;
 
+    [Header("Initial Dig Settings")]
+    public float initialNestPheroThreshold = 3f;  // how much nest pheromone we need to start digging
+
+    public bool hasStartedDigging = false;         // flips true on the very first dig
+
     [Header("Dig Settings")]
     public float digRadius = 1.2f;
     public float digCooldown = 2f;
+    public float digPheroThreshold = 3f;
 
     [Header("Ant Movement Settings")]
     public float moveSpeed = 1.5f;
@@ -42,9 +48,11 @@ public class AntAgent : MonoBehaviour
     private bool isDead = false;
 
     private Animator animator;
+    private ChunkManager _chunkManager;
 
     void Start()
     {
+        _chunkManager = FindFirstObjectByType<ChunkManager>();
         PickNewDirection();
         animator = GetComponentInChildren<Animator>();
         AssignLifespanAndEnergy();
@@ -151,7 +159,7 @@ public class AntAgent : MonoBehaviour
         if (Time.time - lastDigTime < digCooldown) return;
         lastDigTime = Time.time;
 
-        ChunkManager chunkManager = FindFirstObjectByType<ChunkManager>();
+        ChunkManager chunkManager = _chunkManager;
         if (chunkManager == null) return;
 
         Vector3 digPos = transform.position + transform.forward * 0.6f;
@@ -161,12 +169,12 @@ public class AntAgent : MonoBehaviour
         PheromoneField.Instance.DepositDig(digPos, pheromoneDepositAmount);
 
         float digPhero = PheromoneField.Instance.GetDig(Vector3Int.FloorToInt(transform.position));
-        currentState = (digPhero > 2f && transform.position.y < 0f) ? State.Expanding : State.Roaming;
+        currentState = (digPhero > 5f && transform.position.y < 150f) ? State.Expanding : State.Roaming;
     }
 
     void ExpandChamber()
     {
-        ChunkManager chunkManager = FindFirstObjectByType<ChunkManager>();
+        ChunkManager chunkManager = _chunkManager;
         if (chunkManager == null) return;
 
         Vector3 direction = Random.insideUnitSphere;
@@ -183,9 +191,10 @@ public class AntAgent : MonoBehaviour
 
         currentState = State.Roaming;
     }
+
     void AssignChamberType(Vector3 position)
     {
-        ChunkManager chunkManager = FindFirstObjectByType<ChunkManager>();
+        ChunkManager chunkManager = _chunkManager;
         if (chunkManager == null) return;
 
         MarchingCubesGPU chunk = chunkManager.GetChunkAtWorldPosition(position);
@@ -244,23 +253,38 @@ public class AntAgent : MonoBehaviour
 
         if (currentRole == Role.Worker)
         {
+            Vector3Int pos = Vector3Int.FloorToInt(transform.position);
+            float localNest = PheromoneField.Instance.GetNest(pos);
             Vector3Int bestDigTarget = GetBestDigTarget();
-            if (bestDigTarget != Vector3Int.zero)
+
+            Debug.Log($"[Roam] Ant at {pos} sees NestPhero = {localNest:F2}; startedDigging = {hasStartedDigging}");
+
+            if (!hasStartedDigging)
             {
-                currentDirection = ((Vector3)(bestDigTarget - Vector3Int.FloorToInt(transform.position))).normalized;
-                currentState = State.Digging;
+                if (bestDigTarget != Vector3Int.zero && localNest >= initialNestPheroThreshold)
+                {
+                    currentDirection = ((Vector3)(bestDigTarget - pos)).normalized;
+                    currentState = State.Digging;
+                    hasStartedDigging = true;
+
+                }
             }
-            else if (PheromoneField.Instance.GetNest(Vector3Int.FloorToInt(transform.position)) > 0.5f)
+
+            else
             {
-                currentState = State.Digging;
-            }
-            else if (Random.value < 0.01f)
-            {
-                currentState = State.Digging;
-            }
-            if (PheromoneField.Instance.GetChamber(Vector3Int.FloorToInt(transform.position)) > 2f)
-            {
-                currentState = State.Expanding;
+                if (bestDigTarget != Vector3Int.zero)
+                {
+                    currentDirection = ((Vector3)(bestDigTarget - pos)).normalized;
+                    currentState = State.Digging;
+                }
+                else if (Random.value < 0.01f)
+                {
+                    currentState = State.Digging;
+                }
+                if (PheromoneField.Instance.GetChamber(pos) > 2f)
+                {
+                    currentState = State.Expanding;
+                }
             }
         }
 
@@ -273,6 +297,8 @@ public class AntAgent : MonoBehaviour
 
     void EvaluateNestSite()
     {
+        if (hasStartedDigging) return;
+
         Vector3Int pos = Vector3Int.FloorToInt(transform.position);
         float density = SampleDensity(transform.position);
         float depth = transform.position.y;
@@ -280,16 +306,19 @@ public class AntAgent : MonoBehaviour
         float nestScore = 0f;
 
         if (density < 0.3f) nestScore += 0.3f;
-        if (depth < 10f) nestScore += 0.2f;
+        if (depth > 140f) nestScore += (190f - depth) * 0.2f;
 
         if (nestScore > 0.5f)
-            PheromoneField.Instance.DepositNest(transform.position, nestScore * 0.5f);
+            PheromoneField.Instance.DepositNest(transform.position, nestScore * 0.13f);
+
+        //Debug.Log($"Depositing {nestScore} pheromones");
     }
+
     void EvaluateChamberSite()
     {
         Vector3Int pos = Vector3Int.FloorToInt(transform.position);
 
-        ChunkManager chunkManager = FindFirstObjectByType<ChunkManager>();
+        ChunkManager chunkManager = _chunkManager;
         if (chunkManager == null) return;
 
         MarchingCubesGPU chunk = chunkManager.GetChunkAtWorldPosition(pos);
@@ -360,7 +389,7 @@ public class AntAgent : MonoBehaviour
             if (density <= 0f) continue; // Only dig into solid
 
             // Sample environmental quality
-            ChunkManager chunkManager = FindFirstObjectByType<ChunkManager>();
+            ChunkManager chunkManager = _chunkManager;
             if (chunkManager == null) continue;
 
             MarchingCubesGPU chunk = chunkManager.GetChunkAtWorldPosition(check);
@@ -398,11 +427,11 @@ public class AntAgent : MonoBehaviour
         Vector3 normal = SampleSurfaceNormal(pos);
 
         if (densityAtCurrent > 0.1f)
-            transform.position -= normal * Time.deltaTime * 3f;
+            transform.position -= normal * Time.deltaTime * 2f;
         else if (densityBelow > 0.1f)
         {
             Vector3 groundPoint = pos + Vector3.down * 0.5f;
-            Vector3 targetPos = new Vector3(pos.x, groundPoint.y + 1.5f, pos.z);
+            Vector3 targetPos = new Vector3(pos.x, groundPoint.y + 1.8f, pos.z);
             transform.position = Vector3.Lerp(transform.position, targetPos, Time.deltaTime * 4f);
         }
         else
@@ -411,7 +440,7 @@ public class AntAgent : MonoBehaviour
 
     float SampleDensity(Vector3 pos)
     {
-        ChunkManager chunkManager = FindFirstObjectByType<ChunkManager>();
+        ChunkManager chunkManager = _chunkManager;
         if (chunkManager == null) return 0f;
         MarchingCubesGPU chunk = chunkManager.GetChunkAtWorldPosition(pos);
         return chunk == null ? 0f : chunk.SampleDensityAtWorldPosition(pos);
@@ -419,7 +448,7 @@ public class AntAgent : MonoBehaviour
 
     Vector3 SampleSurfaceNormal(Vector3 pos)
     {
-        ChunkManager chunkManager = FindFirstObjectByType<ChunkManager>();
+        ChunkManager chunkManager = _chunkManager;
         if (chunkManager == null) return Vector3.up;
         MarchingCubesGPU chunk = chunkManager.GetChunkAtWorldPosition(pos);
         if (chunk == null) return Vector3.up;

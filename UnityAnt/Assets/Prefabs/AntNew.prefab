@@ -47,19 +47,20 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ddff21b1f9565c343a9ab063307b4609, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  currentChamberType: 0
   currentState: 0
+  currentRole: 0
+  initialNestPheroThreshold: 100
+  hasStartedDigging: 0
   digRadius: 3
   digCooldown: 2
+  digPheroThreshold: 2
   moveSpeed: 2
   pheromoneDepositAmount: 1
   directionUpdateCooldown: 2
   maxAge: 300
   energy: 100
   energyDecayRate: 1
-  age: 0
-  isDead: 0
-  currentRole: 0
-  spawnInterval: 20
 --- !u!54 &1423924320485364743
 Rigidbody:
   m_ObjectHideFlags: 0

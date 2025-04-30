@@ -6,12 +6,22 @@ public class PheromoneField : MonoBehaviour
 {
     public static PheromoneField Instance { get; private set; }
 
+    public ChunkManager chunkManager;
+
     private float[,,] digPheromones;
     private float[,,] trailPheromones;
     private float[,,] nestPheromones;
     private float[,,] chamberPheromones;
 
-    private Vector3Int worldSize;
+    private Vector3Int worldSize = new Vector3Int(192, 192, 192);
+    private Vector3 worldOrigin;
+
+    private bool isInitialized = false;
+
+    private List<Vector3Int> activeDigCells = new();
+    private List<Vector3Int> activeTrailCells = new();
+    private List<Vector3Int> activeNestCells = new();
+    private List<Vector3Int> activeChamberCells = new();
 
     public float decayRate = 0.1f;
     public float trailDecayRate = 0.05f;
@@ -23,7 +33,7 @@ public class PheromoneField : MonoBehaviour
     private float visualThreshold = 0.1f;
 
     void Awake()
-    {
+    { 
         if (Instance != null && Instance != this)
         {
             Destroy(gameObject);
@@ -35,7 +45,24 @@ public class PheromoneField : MonoBehaviour
 
     void Start()
     {
-        StartCoroutine(InitAfterVoxelWorld());
+        if (chunkManager == null)
+            chunkManager = FindObjectOfType<ChunkManager>();
+
+        // compute your grid dimensions—e.g. total voxels across all chunks
+        int totalX = chunkManager.worldSizeX * ChunkManager.chunkSize;
+        int totalY = chunkManager.worldSizeY * ChunkManager.chunkSize;
+        int totalZ = chunkManager.worldSizeZ * ChunkManager.chunkSize;
+
+        worldSize = new Vector3Int(totalX, totalY, totalZ);
+        worldOrigin = chunkManager.transform.position;  // usually (0,0,0)
+
+        // allocate all four grids
+        digPheromones = new float[totalX, totalY, totalZ];
+        trailPheromones = new float[totalX, totalY, totalZ];
+        nestPheromones = new float[totalX, totalY, totalZ];
+        chamberPheromones = new float[totalX, totalY, totalZ];
+
+        isInitialized = true;
     }
 
     IEnumerator InitAfterVoxelWorld()
@@ -45,6 +72,11 @@ public class PheromoneField : MonoBehaviour
 
         worldSize = VoxelWorld.Instance.WorldSize;
 
+        if (worldSize == Vector3Int.zero)
+        {
+            worldSize = new Vector3Int(192, 192, 192);
+        }
+
         digPheromones = new float[worldSize.x, worldSize.y, worldSize.z];
         trailPheromones = new float[worldSize.x, worldSize.y, worldSize.z];
         nestPheromones = new float[worldSize.x, worldSize.y, worldSize.z];
@@ -52,24 +84,53 @@ public class PheromoneField : MonoBehaviour
 
     void Update()
     {
-        if (digPheromones == null) return;
+        if (!isInitialized) return;
 
         float digDecay = decayRate * Time.deltaTime;
         float trailDecay = trailDecayRate * Time.deltaTime;
+        float nestDecay = decayRate * 0.5f * Time.deltaTime;
+        float chamberDecay = decayRate * 0.5f * Time.deltaTime;
 
-        for (int x = 0; x < worldSize.x; x++)
-            for (int y = 0; y < worldSize.y; y++)
-                for (int z = 0; z < worldSize.z; z++)
-                {
-                    digPheromones[x, y, z] = Mathf.Max(0, digPheromones[x, y, z] - digDecay);
-                    trailPheromones[x, y, z] = Mathf.Max(0, trailPheromones[x, y, z] - trailDecay);
-                    nestPheromones[x, y, z] = Mathf.Max(0, nestPheromones[x, y, z] - (decayRate * 0.5f) * Time.deltaTime);
-                }
+        // 2) Decay only active dig cells:
+        for (int i = activeDigCells.Count - 1; i >= 0; i--)
+        {
+            var pos = activeDigCells[i];
+            ref float v = ref digPheromones[pos.x, pos.y, pos.z];
+            v = Mathf.Max(0f, v - digDecay);
+            if (v == 0f) activeDigCells.RemoveAt(i);
+        }
+
+        // 3) Decay only active trail cells:
+        for (int i = activeTrailCells.Count - 1; i >= 0; i--)
+        {
+            var pos = activeTrailCells[i];
+            ref float v = ref trailPheromones[pos.x, pos.y, pos.z];
+            v = Mathf.Max(0f, v - trailDecay);
+            if (v == 0f) activeTrailCells.RemoveAt(i);
+        }
+
+        // 4) Decay only active nest cells:
+        for (int i = activeNestCells.Count - 1; i >= 0; i--)
+        {
+            var pos = activeNestCells[i];
+            ref float v = ref nestPheromones[pos.x, pos.y, pos.z];
+            v = Mathf.Max(0f, v - nestDecay);
+            if (v == 0f) activeNestCells.RemoveAt(i);
+        }
+
+        // 5) Decay only active chamber cells:
+        for (int i = activeChamberCells.Count - 1; i >= 0; i--)
+        {
+            var pos = activeChamberCells[i];
+            ref float v = ref chamberPheromones[pos.x, pos.y, pos.z];
+            v = Mathf.Max(0f, v - chamberDecay);
+            if (v == 0f) activeChamberCells.RemoveAt(i);
+        }
     }
 
     void LateUpdate()
     {
-        UpdateVisuals();
+        //UpdateVisuals();
     }
 
     void UpdateVisuals()
@@ -106,27 +167,73 @@ public class PheromoneField : MonoBehaviour
     }
 
     // Public API
-    public void DepositDig(Vector3 worldPos, float amount) => InternalDeposit(digPheromones, worldPos, amount);
-    public void DepositTrail(Vector3 worldPos, float amount) => InternalDeposit(trailPheromones, worldPos, amount);
     public float GetDig(Vector3Int pos) => InternalGet(digPheromones, pos);
     public float GetTrail(Vector3Int pos) => InternalGet(trailPheromones, pos);
-    public void DepositNest(Vector3 worldPos, float amount) => InternalDeposit(nestPheromones, worldPos, amount);
     public float GetNest(Vector3Int pos) => InternalGet(nestPheromones, pos);
-    public void DepositChamber(Vector3 worldPos, float amount) => InternalDeposit(chamberPheromones, worldPos, amount);
     public float GetChamber(Vector3Int pos) => InternalGet(chamberPheromones, pos);
 
 
     // Helpers
+    public void DepositDig(Vector3 worldPos, float amount)
+    {
+        if (!isInitialized) return;
+        Vector3Int pos = Vector3Int.FloorToInt(worldPos - worldOrigin);
+        if (!IsInsideBounds(pos)) return;
+
+        if (digPheromones[pos.x, pos.y, pos.z] == 0f)
+            activeDigCells.Add(pos);
+
+        digPheromones[pos.x, pos.y, pos.z] += amount;
+    }
+
+    public void DepositTrail(Vector3 worldPos, float amount)
+    {
+        if (!isInitialized) return;
+        Vector3Int pos = Vector3Int.FloorToInt(worldPos - worldOrigin);
+        if (!IsInsideBounds(pos)) return;
+
+        if (trailPheromones[pos.x, pos.y, pos.z] == 0f)
+            activeTrailCells.Add(pos);
+
+        trailPheromones[pos.x, pos.y, pos.z] += amount;
+    }
+
+    public void DepositNest(Vector3 worldPos, float amount)
+    {
+        if (!isInitialized) return;
+        Vector3Int pos = Vector3Int.FloorToInt(worldPos - worldOrigin);
+        if (!IsInsideBounds(pos)) return;
+
+        if (nestPheromones[pos.x, pos.y, pos.z] == 0f)
+            activeNestCells.Add(pos);
+
+        nestPheromones[pos.x, pos.y, pos.z] += amount;
+    }
+
+    public void DepositChamber(Vector3 worldPos, float amount)
+    {
+        if (!isInitialized) return;
+        Vector3Int pos = Vector3Int.FloorToInt(worldPos - worldOrigin);
+        if (!IsInsideBounds(pos)) return;
+
+        if (chamberPheromones[pos.x, pos.y, pos.z] == 0f)
+            activeChamberCells.Add(pos);
+
+        chamberPheromones[pos.x, pos.y, pos.z] += amount;
+    }
+
     private void InternalDeposit(float[,,] grid, Vector3 worldPos, float amount)
     {
-        Vector3Int pos = Vector3Int.FloorToInt(worldPos);
+        if (!isInitialized) return;
+        Vector3 local = worldPos - worldOrigin;
+        Vector3Int pos = Vector3Int.FloorToInt(local);
         if (IsInsideBounds(pos))
             grid[pos.x, pos.y, pos.z] += amount;
     }
 
     private float InternalGet(float[,,] grid, Vector3Int pos)
     {
-        if (!IsInsideBounds(pos)) return 0f;
+        if (!isInitialized || !IsInsideBounds(pos)) return 0f;
         return grid[pos.x, pos.y, pos.z];
     }
 
