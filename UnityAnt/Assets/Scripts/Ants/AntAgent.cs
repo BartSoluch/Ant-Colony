@@ -1,5 +1,6 @@
 ﻿// === AntAgent.cs (with Nest Site Selection, Stigmergy) ===
 using MarchingCubesGPUProject;
+using System.Collections.Generic;
 using UnityEngine;
 
 public class AntAgent : MonoBehaviour
@@ -47,6 +48,11 @@ public class AntAgent : MonoBehaviour
     private float age = 0f;
     private bool isDead = false;
 
+    [Header("Social Settings")]
+    public static List<AntAgent> AllWorkers { get; } = new();
+    public float cohesionRadius = 10f;
+    public float cohesionStrength = 0.5f;  // how strongly they steer toward the group
+
     private Animator animator;
     private ChunkManager _chunkManager;
 
@@ -56,6 +62,8 @@ public class AntAgent : MonoBehaviour
         PickNewDirection();
         animator = GetComponentInChildren<Animator>();
         AssignLifespanAndEnergy();
+        if (currentRole == Role.Worker)
+            AllWorkers.Add(this);
     }
 
     void Update()
@@ -90,6 +98,8 @@ public class AntAgent : MonoBehaviour
     void Die()
     {
         isDead = true;
+        if (currentRole == Role.Worker)
+            AllWorkers.Remove(this);
         GameManager.Instance.NotifyAntDeath(this);
         Destroy(gameObject);
     }
@@ -257,24 +267,45 @@ public class AntAgent : MonoBehaviour
             float localNest = PheromoneField.Instance.GetNest(pos);
             Vector3Int bestDigTarget = GetBestDigTarget();
 
-            Debug.Log($"[Roam] Ant at {pos} sees NestPhero = {localNest:F2}; startedDigging = {hasStartedDigging}");
+            Vector3 center = Vector3.zero;
+            int count = 0;
+
+            foreach (var w in AllWorkers)
+            {
+                if (w == this) continue;
+                if (Vector3.Distance(transform.position, w.transform.position) <= cohesionRadius)
+                {
+                    center += w.transform.position;
+                    count++;
+                }
+            }
 
             if (!hasStartedDigging)
-            {
+            {                
+                if (count > 0)
+                {
+                    center /= count;
+                    Vector3 toCenter = (center - transform.position).normalized;
+                    currentDirection = Vector3.Lerp(currentDirection, toCenter, cohesionStrength * Time.deltaTime).normalized;
+                }
                 if (bestDigTarget != Vector3Int.zero && localNest >= initialNestPheroThreshold)
                 {
                     currentDirection = ((Vector3)(bestDigTarget - pos)).normalized;
                     currentState = State.Digging;
                     hasStartedDigging = true;
-
                 }
             }
 
             else
             {
-                if (bestDigTarget != Vector3Int.zero)
+                if (count > 0)
                 {
-                    currentDirection = ((Vector3)(bestDigTarget - pos)).normalized;
+                    center /= count;
+                    Vector3 toCenter = (center - transform.position).normalized;
+                    currentDirection = Vector3.Lerp(currentDirection, toCenter, cohesionStrength * 0.25f * Time.deltaTime).normalized;
+                }
+                if (bestDigTarget != Vector3Int.zero /*&& PheromoneField.Instance.GetDig(pos) >= digPheroThreshold*/)
+                {
                     currentState = State.Digging;
                 }
                 else if (Random.value < 0.01f)
@@ -427,11 +458,11 @@ public class AntAgent : MonoBehaviour
         Vector3 normal = SampleSurfaceNormal(pos);
 
         if (densityAtCurrent > 0.1f)
-            transform.position -= normal * Time.deltaTime * 2f;
+            transform.position -= normal * Time.deltaTime * 3f;
         else if (densityBelow > 0.1f)
         {
             Vector3 groundPoint = pos + Vector3.down * 0.5f;
-            Vector3 targetPos = new Vector3(pos.x, groundPoint.y + 1.8f, pos.z);
+            Vector3 targetPos = new Vector3(pos.x, groundPoint.y + 1.5f, pos.z);
             transform.position = Vector3.Lerp(transform.position, targetPos, Time.deltaTime * 4f);
         }
         else

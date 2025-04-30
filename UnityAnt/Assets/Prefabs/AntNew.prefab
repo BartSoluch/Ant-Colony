@@ -61,6 +61,8 @@ MonoBehaviour:
   maxAge: 300
   energy: 100
   energyDecayRate: 1
+  cohesionRadius: 16
+  cohesionStrength: 0.8
 --- !u!54 &1423924320485364743
 Rigidbody:
   m_ObjectHideFlags: 0
