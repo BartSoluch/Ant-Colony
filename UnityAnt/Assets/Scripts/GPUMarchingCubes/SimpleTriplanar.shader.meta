@@ -1,0 +1,12 @@
+fileFormatVersion: 2
+guid: ae10df5b0eb67fb469a00e8ab78ace19
+ShaderImporter:
+  externalObjects: {}
+  defaultTextures:
+  - _GrassTex: {fileID: 2800000, guid: 9c37f19ba3a1a9044a1cf025fabd6884, type: 3}
+  - _DryDirtTex: {fileID: 2800000, guid: c608a6f3f4e673c409f2436b5172576a, type: 3}
+  - _WetDirtTex: {fileID: 2800000, guid: a7c02bab705904a4c861d9dc7ef01968, type: 3}
+  nonModifiableTextures: []
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
