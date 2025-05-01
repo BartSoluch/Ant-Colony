@@ -287,24 +287,22 @@ public class AntAgent : MonoBehaviour
             float localNest = PheromoneField.Instance.GetNest(pos);
             Vector3Int bestDigTarget = GetBestDigTarget();
 
-            Debug.Log($"[Roam] Ant at {pos} sees NestPhero = {localNest:F2}; startedDigging = {hasStartedDigging}");
+            Vector3 center = Vector3.zero;
 
             if (!hasStartedDigging)
-            {
+            {                
                 if (bestDigTarget != Vector3Int.zero && localNest >= initialNestPheroThreshold)
                 {
                     currentDirection = ((Vector3)(bestDigTarget - pos)).normalized;
                     currentState = State.Digging;
                     hasStartedDigging = true;
-
                 }
             }
 
             else
             {
-                if (bestDigTarget != Vector3Int.zero)
+                if (bestDigTarget != Vector3Int.zero /*&& PheromoneField.Instance.GetDig(pos) >= digPheroThreshold*/)
                 {
-                    currentDirection = ((Vector3)(bestDigTarget - pos)).normalized;
                     currentState = State.Digging;
                 }
                 else if (Random.value < 0.01f)
@@ -470,11 +468,11 @@ public class AntAgent : MonoBehaviour
         Vector3 normal = SampleSurfaceNormal(pos);
 
         if (densityAtCurrent > 0.1f)
-            transform.position -= normal * Time.deltaTime * 2f;
+            transform.position -= normal * Time.deltaTime * 3f;
         else if (densityBelow > 0.1f)
         {
             Vector3 groundPoint = pos + Vector3.down * 0.5f;
-            Vector3 targetPos = new Vector3(pos.x, groundPoint.y + 1.8f, pos.z);
+            Vector3 targetPos = new Vector3(pos.x, groundPoint.y + 1.5f, pos.z);
             transform.position = Vector3.Lerp(transform.position, targetPos, Time.deltaTime * 4f);
         }
         else

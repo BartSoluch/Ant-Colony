@@ -191,7 +191,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -459, y: 205}
+  m_AnchoredPosition: {x: -845, y: 472}
   m_SizeDelta: {x: 160, y: 20}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &98675069
@@ -650,9 +650,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 60ade8194e464864cb8f02999c27a34a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  chunkManager: {fileID: 2104555790}
   decayRate: 0.2
   trailDecayRate: 0.05
-  pheromoneVisualPrefab: {fileID: 4103891079993435170, guid: 3f7f4a119d00c4e408a63f9afe1137d0, type: 3}
+  pheromoneVisualPrefab: {fileID: 0}
 --- !u!4 &1109333876
 Transform:
   m_ObjectHideFlags: 0
@@ -847,7 +848,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -458, y: 227}
+  m_AnchoredPosition: {x: -820, y: 498}
   m_SizeDelta: {x: 160, y: 30}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!1 &1409241473
