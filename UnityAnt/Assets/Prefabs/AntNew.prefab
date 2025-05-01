@@ -14,7 +14,7 @@ GameObject:
   - component: {fileID: 2063666722554574212}
   m_Layer: 3
   m_Name: AntNew
-  m_TagString: Untagged
+  m_TagString: Ant
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -61,6 +61,13 @@ MonoBehaviour:
   maxAge: 300
   energy: 100
   energyDecayRate: 1
+  waterBias: 1
+  co2Bias: 1
+  nestPheroBias: 1
+  chamberPheroBias: 1
+  randomnessBias: 1
+  crowdingCheckRadius: 1.5
+  crowdingThreshold: 4
 --- !u!54 &1423924320485364743
 Rigidbody:
   m_ObjectHideFlags: 0

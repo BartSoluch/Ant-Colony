@@ -46,7 +46,7 @@ public class PheromoneField : MonoBehaviour
     void Start()
     {
         if (chunkManager == null)
-            chunkManager = FindObjectOfType<ChunkManager>();
+            chunkManager = FindFirstObjectByType<ChunkManager>();
 
         // compute your grid dimensions—e.g. total voxels across all chunks
         int totalX = chunkManager.worldSizeX * ChunkManager.chunkSize;

@@ -10,7 +10,6 @@ GameObject:
   m_Component:
   - component: {fileID: 7415506537724803946}
   - component: {fileID: 8586363753335197134}
-  - component: {fileID: -9172122396950844912}
   - component: {fileID: -2804695053079387107}
   m_Layer: 0
   m_Name: MarchingCubes
@@ -57,33 +56,10 @@ MonoBehaviour:
   ChunkWorldPosition: {x: 0, y: 0, z: 0}
   chunkManager: {fileID: 0}
   collisionMeshFilter: {fileID: 0}
-  collisionMeshCollider: {fileID: 0}
   dirtyVoxels: 0
   frequency: 0.005
   groundVariationMultiplier: 0.5
   baseGroundHeightMultiplier: 2.5
---- !u!64 &-9172122396950844912
-MeshCollider:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 7459184397080430676}
-  m_Material: {fileID: 0}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_LayerOverridePriority: 0
-  m_IsTrigger: 0
-  m_ProvidesContacts: 0
-  m_Enabled: 1
-  serializedVersion: 5
-  m_Convex: 0
-  m_CookingOptions: 30
-  m_Mesh: {fileID: 0}
 --- !u!33 &-2804695053079387107
 MeshFilter:
   m_ObjectHideFlags: 0

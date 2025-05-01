@@ -35,7 +35,6 @@ namespace MarchingCubesGPUProject
 
         // NEW: References for collision mesh updates.
         public MeshFilter collisionMeshFilter;   // Assign in Inspector (for collisions)
-        public MeshCollider collisionMeshCollider; // Assign in Inspector
 
         private float[] cpuDensity;
 
@@ -172,10 +171,6 @@ namespace MarchingCubesGPUProject
             if (!collisionMeshFilter)
                 collisionMeshFilter = GetComponent<MeshFilter>()
                                       ?? gameObject.AddComponent<MeshFilter>();
-
-            if (!collisionMeshCollider)
-                collisionMeshCollider = GetComponent<MeshCollider>()
-                                        ?? gameObject.AddComponent<MeshCollider>();
         }
         void DebugDrawVoxel(Vector3 position)
         {
@@ -359,11 +354,6 @@ namespace MarchingCubesGPUProject
             if (collisionMeshFilter != null)
                 collisionMeshFilter.mesh = collisionMesh;
 
-            if (collisionMeshCollider != null)
-            {
-                collisionMeshCollider.sharedMesh = null; // Reset collider
-                collisionMeshCollider.sharedMesh = collisionMesh;
-            }
         }
 
         void DispatchNormals()

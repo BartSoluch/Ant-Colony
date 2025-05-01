@@ -1,5 +1,6 @@
 ﻿// === AntAgent.cs (with Nest Site Selection, Stigmergy) ===
 using MarchingCubesGPUProject;
+using System.Collections.Generic;
 using UnityEngine;
 
 public class AntAgent : MonoBehaviour
@@ -47,15 +48,29 @@ public class AntAgent : MonoBehaviour
     private float age = 0f;
     private bool isDead = false;
 
+    [Header("Ant Biases")]
+    public float waterBias = 1f;   // preference for humidity
+    public float co2Bias = 1f;     // avoidance of CO2
+    public float nestPheroBias = 1f;
+    public float chamberPheroBias = 1f;
+    public float randomnessBias = 1f;
+
+    [Header("Overcrowding Settings")]
+    public float crowdingCheckRadius = 1.5f;
+    public int crowdingThreshold = 4;
+    private float lastCrowdCheckTime = 0f;
+    private float crowdCooldown = 1f;
+
     private Animator animator;
     private ChunkManager _chunkManager;
 
     void Start()
     {
         _chunkManager = FindFirstObjectByType<ChunkManager>();
-        PickNewDirection();
+        PickNewDirectionACO();
         animator = GetComponentInChildren<Animator>();
         AssignLifespanAndEnergy();
+        AssignBiases();
     }
 
     void Update()
@@ -114,7 +129,14 @@ public class AntAgent : MonoBehaviour
                 break;
         }
     }
-
+    void AssignBiases()
+    {
+        waterBias = Random.Range(0.8f, 1.2f);
+        co2Bias = Random.Range(0.8f, 1.2f);
+        nestPheroBias = Random.Range(0.8f, 1.2f);
+        chamberPheroBias = Random.Range(0.8f, 1.2f);
+        randomnessBias = Random.Range(0.5f, 1.5f);
+    }
     void HandleQueenBehavior()
     {
         if (GameManager.Instance.ShouldQueenLayEgg() && GameManager.Instance.CanSpawnMoreAnts())
@@ -147,7 +169,7 @@ public class AntAgent : MonoBehaviour
 
         if (Time.time - lastDirectionUpdateTime > directionUpdateCooldown)
         {
-            PickNewDirection();
+            PickNewDirectionACO();
             lastDirectionUpdateTime = Time.time;
         }
 
@@ -235,6 +257,14 @@ public class AntAgent : MonoBehaviour
         Vector3 normal = SampleSurfaceNormal(transform.position);
         if (normal == Vector3.zero) return;
 
+        if (Time.time - lastCrowdCheckTime > crowdCooldown && IsOvercrowded())
+        {
+            lastCrowdCheckTime = Time.time;
+            PickNewDirectionACO();
+            currentDirection = Quaternion.AngleAxis(Random.Range(90f, 180f), Vector3.up) * currentDirection;
+            return;
+        }
+
         smoothedNormal = Vector3.Slerp(smoothedNormal, normal, Time.deltaTime * 8f);
         Vector3 move = Vector3.ProjectOnPlane(currentDirection, smoothedNormal).normalized;
         transform.position += move * moveSpeed * Time.deltaTime;
@@ -290,11 +320,23 @@ public class AntAgent : MonoBehaviour
 
         if (Time.time - lastDirectionUpdateTime > directionUpdateCooldown)
         {
-            PickNewDirection();
+            PickNewDirectionACO();
             lastDirectionUpdateTime = Time.time;
         }
     }
+    bool IsOvercrowded()
+    {
+        Collider[] nearby = Physics.OverlapSphere(transform.position, crowdingCheckRadius);
+        int antCount = 0;
 
+        foreach (var col in nearby)
+        {
+            if (col.CompareTag("Ant")) // ← Ensure ant prefab has tag "Ant"
+                antCount++;
+        }
+
+        return antCount > crowdingThreshold;
+    }
     void EvaluateNestSite()
     {
         if (hasStartedDigging) return;
@@ -401,13 +443,14 @@ public class AntAgent : MonoBehaviour
 
             // Calculate score
             float score = 0f;
-            score += water * 0.6f;    // Prefer moist areas
-            score -= co2 * 0.4f;      // Avoid high CO₂
+            score += water * 0.6f * waterBias;
+            score -= co2 * 0.4f * co2Bias;
+
             if (offset.y < 0) score += 0.2f; // Prefer digging downward
             if (depth < 10f) score += 0.2f;  // Prefer staying underground (but not too deep)
 
             float nestPheromone = PheromoneField.Instance.GetNest(check);
-            score += nestPheromone * 1.5f; // Prefer high nest approval
+            score += nestPheromone * 1.5f * nestPheroBias;
 
             if (score > bestScore)
             {
@@ -468,4 +511,62 @@ public class AntAgent : MonoBehaviour
         currentDirection = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)).normalized;
         transform.rotation = Quaternion.LookRotation(currentDirection);
     }
+    void PickNewDirectionACO()
+    {
+        Vector3Int current = Vector3Int.FloorToInt(transform.position);
+        Vector3Int[] offsets = {
+        new(1, 0, 0), new(-1, 0, 0),
+        new(0, 0, 1), new(0, 0, -1),
+        new(1, 0, 1), new(-1, 0, -1),
+        new(1, 0, -1), new(-1, 0, 1)
+    };
+
+        List<(Vector3Int pos, float score)> candidates = new();
+        float totalScore = 0f;
+
+        foreach (var offset in offsets)
+        {
+            Vector3Int neighbor = current + offset;
+
+            float trail = PheromoneField.Instance.GetTrail(neighbor);
+            float dig = PheromoneField.Instance.GetDig(neighbor);
+            float nest = PheromoneField.Instance.GetNest(neighbor);
+            float chamber = PheromoneField.Instance.GetChamber(neighbor);
+
+            float score = 0f;
+            score += trail * 0.4f * nestPheroBias;
+            score += dig * 0.3f * chamberPheroBias;
+            score += nest * 0.6f * nestPheroBias;
+            score += chamber * 0.5f * chamberPheroBias;
+
+            // Add a bit of noise for exploration
+            score *= Random.Range(1f, randomnessBias);
+
+            if (score > 0.01f)
+            {
+                candidates.Add((neighbor, score));
+                totalScore += score;
+            }
+        }
+
+        if (candidates.Count > 0)
+        {
+            float r = Random.Range(0f, totalScore);
+            float runningTotal = 0f;
+
+            foreach (var (pos, score) in candidates)
+            {
+                runningTotal += score;
+                if (r <= runningTotal)
+                {
+                    currentDirection = ((Vector3)(pos - current)).normalized;
+                    return;
+                }
+            }
+        }
+
+        // fallback
+        PickNewDirection();
+    }
+
 }
