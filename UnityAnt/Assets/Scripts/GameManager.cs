@@ -55,7 +55,7 @@ public class GameManager : MonoBehaviour
 
     public int GetMaxAnts()
     {
-        return baseMaxAnts + Mathf.RoundToInt(dugVolume * antsPerCubicMeter);
+        return baseMaxAnts + Mathf.RoundToInt((dugVolume/20) * antsPerCubicMeter);
     }
 
     public float GetDugVolume()

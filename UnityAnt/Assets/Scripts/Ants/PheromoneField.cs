@@ -24,7 +24,7 @@ public class PheromoneField : MonoBehaviour
     private List<Vector3Int> activeChamberCells = new();
 
     public float decayRate = 0.1f;
-    public float trailDecayRate = 0.05f;
+    public float trailDecayRate = 0.01f;
 
 
     [Header("Visuals")]

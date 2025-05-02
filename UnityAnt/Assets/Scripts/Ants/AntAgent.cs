@@ -55,6 +55,7 @@ public class AntAgent : MonoBehaviour
     public float chamberPheroBias = 1f;
     public float randomnessBias = 1f;
 
+
     [Header("Overcrowding Settings")]
     public float crowdingCheckRadius = 1.5f;
     public int crowdingThreshold = 4;
@@ -99,7 +100,7 @@ public class AntAgent : MonoBehaviour
                 break;
         }
 
-        ApplyStickyGravitySDF();
+        StickToSDFSurface();
     }
 
     void Die()
@@ -158,7 +159,6 @@ public class AntAgent : MonoBehaviour
             case State.Expanding: ExpandChamber(); break;
         }
     }
-
     void HandleScoutBehavior()
     {
         Vector3Int current = Vector3Int.FloorToInt(transform.position);
@@ -169,11 +169,11 @@ public class AntAgent : MonoBehaviour
 
         if (Time.time - lastDirectionUpdateTime > directionUpdateCooldown)
         {
-            PickNewDirectionACO();
+            PickNewDirectionACO(); // Now includes 3D
             lastDirectionUpdateTime = Time.time;
         }
 
-        Roam();
+        Roam(); // Already uses sticking and pheromone drop
     }
 
     void TryDig()
@@ -184,7 +184,9 @@ public class AntAgent : MonoBehaviour
         ChunkManager chunkManager = _chunkManager;
         if (chunkManager == null) return;
 
-        Vector3 digPos = transform.position + transform.forward * 0.6f;
+        Vector3 direction = Random.onUnitSphere; // Fully 3D, not biased to surface
+        Vector3 digPos = transform.position + direction * 1.5f;
+
         chunkManager.DigAtWorldPosition(digPos, digRadius);
         GameManager.Instance.RegisterDigEvent();
 
@@ -251,30 +253,10 @@ public class AntAgent : MonoBehaviour
             energy = Mathf.Min(energy + 20f * Time.deltaTime, 100f);
         }
     }
-
     void Roam()
     {
-        Vector3 normal = SampleSurfaceNormal(transform.position);
-        if (normal == Vector3.zero) return;
-
-        if (Time.time - lastCrowdCheckTime > crowdCooldown && IsOvercrowded())
-        {
-            lastCrowdCheckTime = Time.time;
-            PickNewDirectionACO();
-            currentDirection = Quaternion.AngleAxis(Random.Range(90f, 180f), Vector3.up) * currentDirection;
-            return;
-        }
-
-        smoothedNormal = Vector3.Slerp(smoothedNormal, normal, Time.deltaTime * 8f);
         Vector3 move = Vector3.ProjectOnPlane(currentDirection, smoothedNormal).normalized;
         transform.position += move * moveSpeed * Time.deltaTime;
-
-        Vector3 projectedForward = Vector3.ProjectOnPlane(currentDirection, -smoothedNormal).normalized;
-        if (projectedForward.sqrMagnitude > 0.01f)
-        {
-            Quaternion targetRot = Quaternion.LookRotation(projectedForward, -smoothedNormal);
-            transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, Time.deltaTime * 8f);
-        }
 
         EvaluateNestSite();
         EvaluateChamberSite();
@@ -287,10 +269,8 @@ public class AntAgent : MonoBehaviour
             float localNest = PheromoneField.Instance.GetNest(pos);
             Vector3Int bestDigTarget = GetBestDigTarget();
 
-            Vector3 center = Vector3.zero;
-
             if (!hasStartedDigging)
-            {                
+            {
                 if (bestDigTarget != Vector3Int.zero && localNest >= initialNestPheroThreshold)
                 {
                     currentDirection = ((Vector3)(bestDigTarget - pos)).normalized;
@@ -298,10 +278,9 @@ public class AntAgent : MonoBehaviour
                     hasStartedDigging = true;
                 }
             }
-
             else
             {
-                if (bestDigTarget != Vector3Int.zero /*&& PheromoneField.Instance.GetDig(pos) >= digPheroThreshold*/)
+                if (bestDigTarget != Vector3Int.zero)
                 {
                     currentState = State.Digging;
                 }
@@ -315,6 +294,12 @@ public class AntAgent : MonoBehaviour
                 }
             }
         }
+        if (currentRole == Role.Scout)
+        {
+            // Leave stronger trails to encourage others to follow
+            PheromoneField.Instance.DepositTrail(transform.position, pheromoneDepositAmount * 1.0f);
+            EvaluateChamberPotential();
+        }
 
         if (Time.time - lastDirectionUpdateTime > directionUpdateCooldown)
         {
@@ -322,6 +307,36 @@ public class AntAgent : MonoBehaviour
             lastDirectionUpdateTime = Time.time;
         }
     }
+    void EvaluateChamberPotential()
+    {
+        Vector3Int pos = Vector3Int.FloorToInt(transform.position);
+
+        ChunkManager chunkManager = _chunkManager;
+        if (chunkManager == null) return;
+
+        MarchingCubesGPU chunk = chunkManager.GetChunkAtWorldPosition(pos);
+        if (chunk == null) return;
+
+        float water = chunk.SampleWaterAtWorldPosition(pos);
+        float co2 = chunk.SampleCO2AtWorldPosition(pos);
+        float depth = pos.y;
+
+        float chamberScore = 0f;
+
+        if (water > 0.6f && co2 < 0.3f && depth > 5f && depth < 20f)
+            chamberScore = 1.0f; // Fungus
+        else if (water > 0.4f && water < 0.6f && co2 < 0.3f && depth > 10f && depth < 20f)
+            chamberScore = 0.8f; // Nursery
+        else if (water < 0.3f && co2 > 0.5f && depth < 5f)
+            chamberScore = 0.6f; // Waste
+
+        if (chamberScore > 0f)
+        {
+            // Reinforce the idea this is a good chamber site
+            PheromoneField.Instance.DepositChamber(transform.position, chamberScore * 0.6f);
+        }
+    }
+
     bool IsOvercrowded()
     {
         Collider[] nearby = Physics.OverlapSphere(transform.position, crowdingCheckRadius);
@@ -459,24 +474,41 @@ public class AntAgent : MonoBehaviour
 
         return bestScore > 0.2f ? bestTarget : Vector3Int.zero;
     }
-
-    void ApplyStickyGravitySDF()
+    void StickToSDFSurface()
     {
         Vector3 pos = transform.position;
-        float densityAtCurrent = SampleDensity(pos);
-        float densityBelow = SampleDensity(pos + Vector3.down * 0.5f);
-        Vector3 normal = SampleSurfaceNormal(pos);
 
-        if (densityAtCurrent > 0.1f)
-            transform.position -= normal * Time.deltaTime * 3f;
-        else if (densityBelow > 0.1f)
+        // Early exit if we're outside terrain
+        if (_chunkManager == null || _chunkManager.GetChunkAtWorldPosition(pos) == null)
+            return;
+
+        // Get current density
+        float density = SampleDensity(pos);
+
+        // Get surface normal
+        Vector3 normal = SampleSurfaceNormal(pos);
+        if (normal == Vector3.zero)
         {
-            Vector3 groundPoint = pos + Vector3.down * 0.5f;
-            Vector3 targetPos = new Vector3(pos.x, groundPoint.y + 1.5f, pos.z);
-            transform.position = Vector3.Lerp(transform.position, targetPos, Time.deltaTime * 4f);
+            // Try to nudge ant in a random direction to escape flat zone
+            Vector3 nudge = Random.onUnitSphere * 0.2f;
+            transform.position += nudge;
+
+            return; // skip alignment this frame
         }
-        else
-            transform.position += Vector3.down * Time.deltaTime * 2f;
+
+        // Smooth normal to avoid jitter
+        smoothedNormal = Vector3.Slerp(smoothedNormal, normal, Time.deltaTime * 8f);
+
+        // Move ant toward surface (iso-surface is at density = 0)
+        transform.position -= density * normal * 0.5f;
+
+        // Align rotation to surface
+        Vector3 forward = Vector3.ProjectOnPlane(currentDirection, -smoothedNormal).normalized;
+        if (forward.sqrMagnitude > 0.001f)
+        {
+            Quaternion targetRot = Quaternion.LookRotation(forward, -smoothedNormal);
+            transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, Time.deltaTime * 10f);
+        }
     }
 
     float SampleDensity(Vector3 pos)
@@ -486,13 +518,13 @@ public class AntAgent : MonoBehaviour
         MarchingCubesGPU chunk = chunkManager.GetChunkAtWorldPosition(pos);
         return chunk == null ? 0f : chunk.SampleDensityAtWorldPosition(pos);
     }
-
     Vector3 SampleSurfaceNormal(Vector3 pos)
     {
         ChunkManager chunkManager = _chunkManager;
-        if (chunkManager == null) return Vector3.up;
+        if (chunkManager == null) return smoothedNormal;
+
         MarchingCubesGPU chunk = chunkManager.GetChunkAtWorldPosition(pos);
-        if (chunk == null) return Vector3.up;
+        if (chunk == null) return smoothedNormal;
 
         float eps = 0.5f;
         float dx = chunk.SampleDensityAtWorldPosition(pos + Vector3.right * eps) - chunk.SampleDensityAtWorldPosition(pos - Vector3.right * eps);
@@ -500,7 +532,7 @@ public class AntAgent : MonoBehaviour
         float dz = chunk.SampleDensityAtWorldPosition(pos + Vector3.forward * eps) - chunk.SampleDensityAtWorldPosition(pos - Vector3.forward * eps);
 
         Vector3 gradient = new Vector3(dx, dy, dz);
-        return gradient.sqrMagnitude > 0.0001f ? gradient.normalized : Vector3.zero;
+        return (gradient.sqrMagnitude > 0.0001f) ? gradient.normalized : smoothedNormal;
     }
 
     void PickNewDirection()
@@ -514,9 +546,13 @@ public class AntAgent : MonoBehaviour
         Vector3Int current = Vector3Int.FloorToInt(transform.position);
         Vector3Int[] offsets = {
         new(1, 0, 0), new(-1, 0, 0),
+        new(0, 1, 0), new(0, -1, 0),
         new(0, 0, 1), new(0, 0, -1),
+        new(1, 1, 0), new(-1, -1, 0),
         new(1, 0, 1), new(-1, 0, -1),
-        new(1, 0, -1), new(-1, 0, 1)
+        new(0, 1, 1), new(0, -1, -1),
+        new(1, -1, 0), new(-1, 1, 0),
+        new(0, 1, -1), new(0, -1, 1)
     };
 
         List<(Vector3Int pos, float score)> candidates = new();
@@ -525,7 +561,6 @@ public class AntAgent : MonoBehaviour
         foreach (var offset in offsets)
         {
             Vector3Int neighbor = current + offset;
-
             float trail = PheromoneField.Instance.GetTrail(neighbor);
             float dig = PheromoneField.Instance.GetDig(neighbor);
             float nest = PheromoneField.Instance.GetNest(neighbor);
@@ -537,7 +572,11 @@ public class AntAgent : MonoBehaviour
             score += nest * 0.6f * nestPheroBias;
             score += chamber * 0.5f * chamberPheroBias;
 
-            // Add a bit of noise for exploration
+            if (offset.y < 0)
+                score *= Random.Range(1.05f, 1.010f);
+            else if (offset.y > 0)
+                score *= Random.Range(0.90f, 0.95f);
+
             score *= Random.Range(1f, randomnessBias);
 
             if (score > 0.01f)
@@ -550,12 +589,11 @@ public class AntAgent : MonoBehaviour
         if (candidates.Count > 0)
         {
             float r = Random.Range(0f, totalScore);
-            float runningTotal = 0f;
-
+            float running = 0f;
             foreach (var (pos, score) in candidates)
             {
-                runningTotal += score;
-                if (r <= runningTotal)
+                running += score;
+                if (r <= running)
                 {
                     currentDirection = ((Vector3)(pos - current)).normalized;
                     return;
@@ -563,8 +601,35 @@ public class AntAgent : MonoBehaviour
             }
         }
 
-        // fallback
-        PickNewDirection();
+        PickNewDirection(); // fallback
+    }
+    void OnDrawGizmosSelected()
+    {
+        if (!Application.isPlaying) return;
+
+        Vector3 pos = transform.position;
+
+        // Surface normal
+        Vector3 normal = SampleSurfaceNormal(pos);
+        Gizmos.color = Color.green;
+        Gizmos.DrawLine(pos, pos + normal);
+
+        // Smoothed normal
+        Gizmos.color = Color.yellow;
+        Gizmos.DrawLine(pos, pos + smoothedNormal);
+
+        // Movement direction
+        Gizmos.color = Color.cyan;
+        Gizmos.DrawLine(pos, pos + currentDirection);
+
+        // Display densities
+        float here = SampleDensity(pos);
+        float below = SampleDensity(pos + Vector3.down * 0.5f);
+        float above = SampleDensity(pos + Vector3.up * 0.5f);
+        GUIStyle style = new GUIStyle { normal = new GUIStyleState { textColor = Color.white } };
+        #if UNITY_EDITOR
+                UnityEditor.Handles.Label(pos + Vector3.up * 1.5f, $"Densities: here={here:F2}, up={above:F2}, down={below:F2}", style);
+        #endif
     }
 
 }
