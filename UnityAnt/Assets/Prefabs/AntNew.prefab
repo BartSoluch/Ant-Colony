@@ -50,7 +50,7 @@ MonoBehaviour:
   currentChamberType: 0
   currentState: 0
   currentRole: 0
-  initialNestPheroThreshold: 100
+  initialNestPheroThreshold: 150
   hasStartedDigging: 0
   digRadius: 3
   digCooldown: 2

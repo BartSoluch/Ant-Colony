@@ -12,6 +12,7 @@ public class GameManager : MonoBehaviour
     public int baseMaxAnts = 50;
     public float antsPerCubicMeter = 0.5f;
     public GameObject antPrefab;
+    public static bool colonyDiggingStarted = false;
 
     private List<AntAgent> allAnts = new();
     private float dugVolume = 0f;
@@ -25,7 +26,10 @@ public class GameManager : MonoBehaviour
         Instance = this;
     }
 
-    void Update() { }
+    void Update() 
+    { 
+        
+    }
 
     public void RegisterAnt(AntAgent ant)
     {
