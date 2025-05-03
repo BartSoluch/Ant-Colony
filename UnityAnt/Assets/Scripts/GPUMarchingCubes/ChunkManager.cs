@@ -5,7 +5,7 @@ using System.Collections.Generic;
 public class ChunkManager : MonoBehaviour
 {
     public GameObject chunkPrefab;
-    public static int chunkSize = 64;  // Use as ChunkManager.chunkSize everywhere.
+    public static int chunkSize = MarchingCubesGPU.N;  // Use as ChunkManager.chunkSize everywhere.
     public int worldSizeX = 2;
     public int worldSizeY = 1;
     public int worldSizeZ = 2;
@@ -15,6 +15,15 @@ public class ChunkManager : MonoBehaviour
     public float frequency = 0.005f;
     public float groundVariationMultiplier = 0.5f;
     public float baseGroundHeightMultiplier = 2.5f;
+
+    [Header("Chamber Generation Settings")]
+    [Range(0f, 1f)] public float fungusMinDepthFrac = 0.21f;
+    [Range(0f, 1f)] public float fungusMaxDepthFrac = 0.9f;
+    [Range(0f, 1f)] public float nurseryMinDepthFrac = 0.45f;
+    [Range(0f, 1f)] public float nurseryMaxDepthFrac = 0.9f;
+    [Range(0f, 1f)] public float wasteMaxDepthFrac = 0.2f;
+    public enum ChamberType { None, FungusGarden, Nursery, WasteDump }
+    private ChamberType[,,] zoneMap;
 
     private MarchingCubesGPU[,,] chunks;
     // A dictionary to hold a normals RenderTexture for each chunk.
@@ -54,6 +63,8 @@ public class ChunkManager : MonoBehaviour
 
         // 🛠 Step 2: Defer border syncing to next frame
         Invoke(nameof(LateSyncChunks), 0f);
+
+        InitializeChamberZones();
     }
 
     void LateSyncChunks()
@@ -243,4 +254,55 @@ public class ChunkManager : MonoBehaviour
             to.CopyBorderFrom(from, faceAxis: 2, sourceCoord: 0, targetCoord: edge);
     }
 
+    void InitializeChamberZones()
+    {
+        int worldX = worldSizeX * chunkSize;
+        int worldY = worldSizeY * chunkSize;
+        int worldZ = worldSizeZ * chunkSize;
+
+        // compute absolute depths
+        float fungusMinY = worldY * fungusMinDepthFrac;
+        float fungusMaxY = worldY * fungusMaxDepthFrac;
+        float nurseryMinY = worldY * nurseryMinDepthFrac;
+        float nurseryMaxY = worldY * nurseryMaxDepthFrac;
+        float wasteMaxY = worldY * wasteMaxDepthFrac;
+
+        zoneMap = new ChamberType[worldX, worldY, worldZ];
+
+        for (int x = 0; x < worldX; x++)
+            for (int y = 0; y < worldY; y++)
+                for (int z = 0; z < worldZ; z++)
+                {
+                    Vector3 worldPos = new Vector3(x + 0.5f, y + 0.5f, z + 0.5f);
+                    var chunk = GetChunkAtWorldPosition(worldPos);
+                    if (chunk == null)
+                    {
+                        zoneMap[x, y, z] = ChamberType.None;
+                        continue;
+                    }
+
+                    float water = chunk.SampleWaterAtWorldPosition(worldPos);
+                    float co2 = chunk.SampleCO2AtWorldPosition(worldPos);
+                    float depth = y;
+
+                    if (water > 0.6f && co2 < 0.3f && depth >= fungusMinY && depth <= fungusMaxY)
+                        zoneMap[x, y, z] = ChamberType.FungusGarden;
+                    else if (water > 0.4f && water < 0.6f && co2 < 0.3f && depth >= nurseryMinY && depth <= nurseryMaxY)
+                        zoneMap[x, y, z] = ChamberType.Nursery;
+                    else if (co2 > 0.5f && water < 0.3f && depth <= wasteMaxY)
+                        zoneMap[x, y, z] = ChamberType.WasteDump;
+                    else
+                        zoneMap[x, y, z] = ChamberType.None;
+                }
+    }
+
+    public ChamberType GetZoneAtVoxel(Vector3 worldPos)
+    {
+        Vector3Int idx = Vector3Int.FloorToInt(worldPos);
+        if (idx.x < 0 || idx.x >= zoneMap.GetLength(0)
+         || idx.y < 0 || idx.y >= zoneMap.GetLength(1)
+         || idx.z < 0 || idx.z >= zoneMap.GetLength(2))
+            return ChamberType.None;
+        return zoneMap[idx.x, idx.y, idx.z];
+    }
 }

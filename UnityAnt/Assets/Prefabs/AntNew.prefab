@@ -47,13 +47,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ddff21b1f9565c343a9ab063307b4609, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  currentChamberType: 0
   currentState: 0
   currentRole: 0
-  initialNestPheroThreshold: 150
-  digRadius: 3
-  digCooldown: 2
-  digPheroThreshold: 200
+  currentChamberType: 0
+  initialNestPheroThreshold: 1
+  digRadius: 2.5
+  digCooldown: 1
+  digPheroThreshold: 2
+  maxExpansionDigs: 50
   moveSpeed: 2
   pheromoneDepositAmount: 1
   directionUpdateCooldown: 1
@@ -62,13 +63,15 @@ MonoBehaviour:
   energyDecayRate: 1
   waterBias: 1
   co2Bias: 1
-  nestPheroBias: 1
-  chamberPheroBias: 1
+  digPheroBias: 1
+  trailPheroBias: 1
   randomnessBias: 1
-  senseDist: 7
+  downwardBias: 1
+  upwardBias: 1
+  senseDist: 5
   incPerSearch: 2
   crowdingCheckRadius: 5
-  crowdingThreshold: 4
+  crowdingThreshold: 3
 --- !u!54 &1423924320485364743
 Rigidbody:
   m_ObjectHideFlags: 0

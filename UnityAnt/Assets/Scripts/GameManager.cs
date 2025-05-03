@@ -2,6 +2,7 @@
 using UnityEngine;
 using System.Collections.Generic;
 using MarchingCubesGPUProject;
+using System.Linq;
 
 public class GameManager : MonoBehaviour
 {
@@ -85,10 +86,18 @@ public class GameManager : MonoBehaviour
         int workers = allAnts.FindAll(a => a.currentRole == AntAgent.Role.Worker).Count;
         int scouts = allAnts.FindAll(a => a.currentRole == AntAgent.Role.Scout).Count;
 
-        if (workers < (allAnts.Count * 1f))
+        if (workers < (allAnts.Count * 0.8f))
             return AntAgent.Role.Worker;
         else
             return AntAgent.Role.Scout;
+    }
+
+    public IReadOnlyList<AntAgent> GetActiveWorkers()
+    {
+        // any Worker that is currently in Digging or Expanding
+        return allAnts
+            .Where(a => a.currentRole == AntAgent.Role.Worker)
+            .ToList();
     }
 
     public void SpawnAntAt(Vector3 position, AntAgent.Role role)

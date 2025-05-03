@@ -239,9 +239,9 @@ MonoBehaviour:
   m_HandleRect: {fileID: 2077359975}
   m_Direction: 0
   m_MinValue: 0.1
-  m_MaxValue: 3
+  m_MaxValue: 5
   m_WholeNumbers: 0
-  m_Value: 1
+  m_Value: 5
   m_OnValueChanged:
     m_PersistentCalls:
       m_Calls: []
@@ -1180,6 +1180,11 @@ MonoBehaviour:
   frequency: 0.005
   groundVariationMultiplier: 0.5
   baseGroundHeightMultiplier: 2.5
+  fungusMinDepthFrac: 0.21
+  fungusMaxDepthFrac: 0.9
+  nurseryMinDepthFrac: 0.45
+  nurseryMaxDepthFrac: 0.9
+  wasteMaxDepthFrac: 0.2
 --- !u!4 &2104555791
 Transform:
   m_ObjectHideFlags: 0

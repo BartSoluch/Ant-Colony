@@ -15,19 +15,22 @@ public class AntAgent : MonoBehaviour
         WasteDump
     }
 
-    public ChamberType currentChamberType = ChamberType.None;
-
     [Header("Settings")]
     public State currentState = State.Roaming;
     public Role currentRole = Role.Worker;
+    public ChamberType currentChamberType = ChamberType.None;
 
     [Header("Initial Dig Settings")]
-    public float initialNestPheroThreshold = 3f;  // how much nest pheromone we need to start digging
+    public float initialNestPheroThreshold = 150f;  // how much nest pheromone we need to start digging
 
     [Header("Dig Settings")]
     public float digRadius = 1.2f;
     public float digCooldown = 2f;
-    public float digPheroThreshold = 3f;
+    public float digPheroThreshold = 250f;
+
+    [Header("Chamber Expansion Settings")]
+    public int maxExpansionDigs = 50;
+    private int expansionDigCount = 0;
 
     [Header("Ant Movement Settings")]
     public float moveSpeed = 1.5f;
@@ -53,20 +56,22 @@ public class AntAgent : MonoBehaviour
     [Header("Ant Biases")]
     public float waterBias = 1f;   // preference for humidity
     public float co2Bias = 1f;     // avoidance of CO2
-    public float nestPheroBias = 1f;
-    public float chamberPheroBias = 1f;
+    public float digPheroBias = 1f;
+    public float trailPheroBias = 1f;
     public float randomnessBias = 1f;
+    public float downwardBias = 1f;
+    public float upwardBias = 1f;
 
     [Header("ACO Sensing")]
-    public int senseDist = 5;   // max radius
+    public int senseDist = 7;   // max radius
     public int incPerSearch = 2;   // gap between shells (e.g. 1,3,5)
 
     private float descentThreshold = 150f;    // above this Y, prefer going down
-    private float descentBias = 20f;     // multiplier for downward moves
+    private float descentBias = 50f;     // multiplier for downward moves
 
     [Header("Overcrowding Settings")]
-    public float crowdingCheckRadius = 1.5f;
-    public int crowdingThreshold = 4;
+    public float crowdingCheckRadius = 15f;
+    public int crowdingThreshold = 2;
     private float lastCrowdCheckTime = 0f;
     private float crowdCooldown = 1f;
 
@@ -146,9 +151,11 @@ public class AntAgent : MonoBehaviour
     {
         waterBias = Random.Range(0.8f, 1.2f);
         co2Bias = Random.Range(0.8f, 1.2f);
-        nestPheroBias = Random.Range(0.8f, 1.2f);
-        chamberPheroBias = Random.Range(0.8f, 1.2f);
+        trailPheroBias = Random.Range(0.8f, 1.2f);
+        digPheroBias = Random.Range(0.8f, 1.2f);
         randomnessBias = Random.Range(0.5f, 1.5f);
+        downwardBias = Random.Range(1.5f, 2.5f);
+        upwardBias = Random.Range(0.5f, 1.5f);
     }
 
     void HandleQueenBehavior()
@@ -174,18 +181,53 @@ public class AntAgent : MonoBehaviour
             Vector3 move = Vector3.ProjectOnPlane(currentDirection, smoothedNormal).normalized;
             //transform.position += move * moveSpeed * dt;
         }
-        */
+        
+
 
         if (Time.time - lastDirectionUpdateTime > directionUpdateCooldown)
         {
             PickNewDirectionACO();
             lastDirectionUpdateTime = Time.time;
         }
-
+        
         Vector3 surfN = SampleSurfaceNormal(transform.position);
         smoothedNormal = Vector3.Slerp(smoothedNormal, surfN, dt * 8f);
         Vector3 move = Vector3.ProjectOnPlane(currentDirection, smoothedNormal).normalized;
         transform.position += move * moveSpeed * dt;
+
+        */
+
+        Vector3 me = transform.position;
+
+        // 1) Scan a flat ring around her for the minimum density (i.e. most open/tunneled)
+        if (GameManager.colonyDiggingStarted)
+        {
+            var activeWorkers = GameManager.Instance.GetActiveWorkers();
+            if (activeWorkers.Count > 0)
+            {
+                // find the lowest‐Y worker manually
+                AntAgent lowest = activeWorkers[0];
+                for (int i = 1; i < activeWorkers.Count; i++)
+                {
+                    if (activeWorkers[i].transform.position.y < lowest.transform.position.y)
+                        lowest = activeWorkers[i];
+                }
+
+                // steer toward that worker
+                Vector3 desired = (lowest.transform.position - me).normalized;
+                currentDirection = Vector3.Slerp(
+                    currentDirection,
+                    desired,
+                    dt * homeBias
+                ).normalized;
+
+                // stick to surface just like Roam()
+                Vector3 surfN = SampleSurfaceNormal(me);
+                smoothedNormal = Vector3.Slerp(smoothedNormal, surfN, dt * 8f);
+                Vector3 move = Vector3.ProjectOnPlane(currentDirection, smoothedNormal).normalized;
+                transform.position += move * moveSpeed * dt;
+            }
+        }
 
         if (GameManager.Instance.ShouldQueenLayEgg() && GameManager.Instance.CanSpawnMoreAnts())
         {
@@ -197,7 +239,7 @@ public class AntAgent : MonoBehaviour
             Vector3 n = SampleSurfaceNormal(raw);
             float d = SampleDensity(raw);
             Vector3 surface = raw - n * d;        // back to the surface
-            surface += n * 1.5f;                  // hover 1.5 units above it
+            surface += n * 0.5f;                  // hover 1.5 units above it
 
             // 3) spawn there
             GameManager.Instance.SpawnAntAt(surface,
@@ -207,67 +249,84 @@ public class AntAgent : MonoBehaviour
 
     void HandleWorkerBehavior()
     {
+        var zone = _chunkManager.GetZoneAtVoxel(transform.position);
         switch (currentState)
         {
-            case State.Roaming: Roam(); break;
-            case State.Digging: TryDig(); break;
+            case State.Roaming:
+                if (zone != ChunkManager.ChamberType.None)
+                {
+                    // begin expanding this chamber
+                    currentChamberType = (ChamberType)zone;
+                    currentState = State.Expanding;
+                    expansionDigCount = 0;
+                    return;
+                }
+                Roam(); 
+                break;
+            case State.Digging:
+                if (zone == ChunkManager.ChamberType.None) TryDig(); 
+                break;
             case State.Expanding: ExpandChamber(); break;
         }
     }
     void HandleScoutBehavior()
     {
-        Vector3Int current = Vector3Int.FloorToInt(transform.position);
-        Vector3Int best = GetBestTrailTarget(current);
+        //Vector3Int current = Vector3Int.FloorToInt(transform.position);
+        //Vector3Int best = GetBestTrailTarget(current);
 
-        if (best != Vector3Int.zero)
-            currentDirection = ((Vector3)(best - current)).normalized;
-
-        if (Time.time - lastDirectionUpdateTime > directionUpdateCooldown)
-        {
-            PickNewDirectionACO(); // Now includes 3D
-            lastDirectionUpdateTime = Time.time;
-        }
+        //if (best != Vector3Int.zero)
+        //   currentDirection = ((Vector3)(best - current)).normalized;
 
         Roam(); // Already uses sticking and pheromone drop
     }
 
     void TryDig()
     {
+        if (Time.time - lastDigTime < digCooldown)
+            return;
+
         lastDigTime = Time.time;
 
         ChunkManager chunkManager = _chunkManager;
         if (chunkManager == null) return;
 
-        PickNewDirectionACO(); // Fully 3D, not biased to surface
+        PickNewDirectionACO();
         Vector3 digPos = transform.position + currentDirection * 1.5f;
 
+        float digPhero = PheromoneField.Instance.GetDig(Vector3Int.FloorToInt(transform.position));
+        
         chunkManager.DigAtWorldPosition(digPos, digRadius);
         GameManager.Instance.RegisterDigEvent();
-
         PheromoneField.Instance.DepositDig(digPos, pheromoneDepositAmount);
+        
 
-        float digPhero = PheromoneField.Instance.GetDig(Vector3Int.FloorToInt(transform.position));
-        currentState = (digPhero > 5f && transform.position.y < 150f) ? State.Expanding : State.Roaming;
+        if (digPhero > digPheroThreshold && transform.position.y < 150f)
+            currentState = State.Expanding;
+        else
+            currentState = State.Roaming;
     }
 
     void ExpandChamber()
     {
-        ChunkManager chunkManager = _chunkManager;
-        if (chunkManager == null) return;
-
-        Vector3 direction = Random.insideUnitSphere;
-        Vector3 digPos = transform.position + direction * 1.5f;
-        chunkManager.DigAtWorldPosition(digPos, digRadius * 1.5f);
-        PheromoneField.Instance.DepositDig(digPos, pheromoneDepositAmount * 1.5f);
-
-        // If no current chamber type, assign one
-        if (currentChamberType == ChamberType.None)
+        // stop after max digs
+        if (expansionDigCount >= maxExpansionDigs)
         {
-            AssignChamberType(transform.position);
-            Debug.Log("Assigned Chamber: " + currentChamberType);
+            //currentState = State.Roaming;
+            return;
         }
 
-        currentState = State.Roaming;
+        // pick a random horizontal direction
+        Vector2 dir2D = Random.insideUnitCircle.normalized;
+        Vector3 dir3D = new Vector3(dir2D.x, 0f, dir2D.y);
+        Vector3 digPos = transform.position + dir3D * (digRadius * 1.2f);
+
+        // do the actual dig
+        _chunkManager?.DigAtWorldPosition(digPos, digRadius * 1.2f);
+        PheromoneField.Instance.DepositDig(digPos, pheromoneDepositAmount * 1.2f);
+
+        expansionDigCount++;
+
+        // stay in Expanding until done
     }
 
     void AssignChamberType(Vector3 position)
@@ -312,13 +371,12 @@ public class AntAgent : MonoBehaviour
         Vector3 move = Vector3.ProjectOnPlane(currentDirection, smoothedNormal).normalized;
         transform.position += move * moveSpeed * Time.deltaTime;
 
-        EvaluateNestSite();
-        EvaluateChamberSite();
-
-        PheromoneField.Instance.DepositTrail(transform.position, pheromoneDepositAmount * 0.25f);
-
         if (currentRole == Role.Worker)
         {
+            EvaluateNestSite();
+            EvaluateChamberSite();
+
+            PheromoneField.Instance.DepositTrail(transform.position, pheromoneDepositAmount * 0.25f);
             Vector3Int pos = Vector3Int.FloorToInt(transform.position);
             float localNest = PheromoneField.Instance.GetNest(pos);
             Vector3Int bestDigTarget = GetBestDigTarget();
@@ -334,11 +392,11 @@ public class AntAgent : MonoBehaviour
             }
             else
             {
-                if (bestDigTarget != Vector3Int.zero && Time.time - lastDigTime > digCooldown)
+                if (bestDigTarget != Vector3Int.zero)
                 {
                     currentState = State.Digging;
                 }
-                else if (Random.value < 0.01f && Time.time - lastDigTime > digCooldown)
+                else if (Random.value < 0.01f)
                 {
                     currentState = State.Digging;
                 }
@@ -356,9 +414,14 @@ public class AntAgent : MonoBehaviour
         if (currentRole == Role.Scout)
         {
             // Leave stronger trails to encourage others to follow
-            PheromoneField.Instance.DepositTrail(transform.position, pheromoneDepositAmount * 1.0f);
+            if (Time.time - lastDirectionUpdateTime > directionUpdateCooldown)
+            {
+                PickNewDirectionACO(); // Now includes 3D
+                lastDirectionUpdateTime = Time.time;
+            }
+            PheromoneField.Instance.DepositTrail(transform.position, pheromoneDepositAmount * 2.0f);
             EvaluateNestSite();
-            EvaluateChamberPotential();
+            EvaluateChamberSite();
         }
     }
     void EvaluateChamberPotential()
@@ -425,37 +488,12 @@ public class AntAgent : MonoBehaviour
 
     void EvaluateChamberSite()
     {
-        Vector3Int pos = Vector3Int.FloorToInt(transform.position);
-
-        ChunkManager chunkManager = _chunkManager;
-        if (chunkManager == null) return;
-
-        MarchingCubesGPU chunk = chunkManager.GetChunkAtWorldPosition(pos);
-        if (chunk == null) return;
-
-        float water = chunk.SampleWaterAtWorldPosition(pos);
-        float co2 = chunk.SampleCO2AtWorldPosition(pos);
-        float depth = pos.y;
-
-        float chamberScore = 0f;
-
-        // Prefer fungus garden conditions
-        if (water > 0.6f && co2 < 0.3f && depth > 37.5f && depth < 150f)
-            chamberScore += 1.0f;
-
-        // Prefer nursery conditions
-        else if (water > 0.4f && water < 0.6f && co2 < 0.3f && depth > 75f && depth < 150f)
-            chamberScore += 0.8f;
-
-        // Prefer waste dump conditions
-        else if (water < 0.3f && co2 > 0.5f && depth < 37.5f)
-            chamberScore += 0.6f;
-
-        if (chamberScore > 0f)
-        {
-            Debug.Log($"Depositing chamber pheromone at {pos}: Water={water:F2}, CO₂={co2:F2}, Depth={depth:F2}");
-            PheromoneField.Instance.DepositChamber(transform.position, chamberScore * 0.5f);
-        }
+        var zone = _chunkManager.GetZoneAtVoxel(transform.position);
+        if (zone == ChunkManager.ChamberType.None) return;
+        float score = zone == ChunkManager.ChamberType.FungusGarden ? 1f
+                     : zone == ChunkManager.ChamberType.Nursery ? 0.8f
+                     : zone == ChunkManager.ChamberType.WasteDump ? 0.6f : 0f;
+        PheromoneField.Instance.DepositChamber(transform.position, score);
     }
 
     Vector3Int GetBestTrailTarget(Vector3Int current)
@@ -477,6 +515,7 @@ public class AntAgent : MonoBehaviour
 
         return bestPhero > 0.1f ? bestPos : Vector3Int.zero;
     }
+    
     Vector3Int GetBestDigTarget()
     {
         Vector3Int current = Vector3Int.FloorToInt(transform.position);
@@ -486,7 +525,7 @@ public class AntAgent : MonoBehaviour
         new(1, 0, 1), new(-1, 0, -1),
         new(1, 0, -1), new(-1, 0, 1),
         new(0, -1, 0) // Prefer downward digging too
-    };
+        };
 
         float bestScore = float.MinValue;
         Vector3Int bestTarget = Vector3Int.zero;
@@ -513,11 +552,18 @@ public class AntAgent : MonoBehaviour
             score += water * 0.6f * waterBias;
             score -= co2 * 0.4f * co2Bias;
 
-            if (offset.y < 0) score += 0.2f; // Prefer digging downward
-            if (depth < 10f) score += 0.2f;  // Prefer staying underground (but not too deep)
+            if (offset.y < 0) score *= 1.2f; // Prefer digging downward
+            if (depth < 150f) score *= 1.2f;  // Prefer staying underground (but not too deep)
 
-            float nestPheromone = PheromoneField.Instance.GetNest(check);
-            score += nestPheromone * 1.5f * nestPheroBias;
+            if (!GameManager.colonyDiggingStarted)
+            {
+                float nestPheromone = PheromoneField.Instance.GetNest(check);
+                score += nestPheromone;
+            }
+
+            // **branching penalty**: avoid places with lots of previous digging
+            //float already = PheromoneField.Instance.GetDig(check);
+            //score -= already * 0.2f;
 
             if (score > bestScore)
             {
@@ -525,7 +571,6 @@ public class AntAgent : MonoBehaviour
                 bestTarget = check;
             }
         }
-
         return bestScore > 0.2f ? bestTarget : Vector3Int.zero;
     }
 
@@ -609,6 +654,30 @@ public class AntAgent : MonoBehaviour
 
     void PickNewDirectionACO()
     {
+        if (Time.time - lastCrowdCheckTime > crowdCooldown && IsOvercrowded())
+        {
+            lastCrowdCheckTime = Time.time;
+            // Compute centroid of nearby ants
+            Collider[] nearby = Physics.OverlapSphere(transform.position, crowdingCheckRadius);
+            Vector3 centroid = Vector3.zero;
+            int count = 0;
+            foreach (var col in nearby)
+            {
+                if (col.CompareTag("Ant") && col.gameObject != this.gameObject)
+                {
+                    centroid += col.transform.position;
+                    count++;
+                }
+            }
+            if (count > 0)
+            {
+                centroid /= count;
+                // Repel away from crowd
+                currentDirection = (transform.position - centroid).normalized;
+                return;
+            }
+        }
+
         Vector3Int current = Vector3Int.FloorToInt(transform.position);
         var offsets = new List<Vector3Int>();
         for (int r = 1; r <= senseDist; r += incPerSearch)
@@ -622,44 +691,39 @@ public class AntAgent : MonoBehaviour
                             offsets.Add(new Vector3Int(x, y, z));
         }
 
-        bool initialPhase = !GameManager.colonyDiggingStarted;
+        var requiredZone = (ChunkManager.ChamberType) currentChamberType;
         List<(Vector3Int pos, float score)> candidates = new();
         float totalScore = 0f;
 
         foreach (var offset in offsets)
         {
             Vector3Int neighbor = current + offset;
+            var neighborZone = _chunkManager.GetZoneAtVoxel(neighbor);
+            if (currentState == State.Expanding && neighborZone != requiredZone) continue;
             float score = 0f;
 
-            if (initialPhase)
-            {
-                float nest = PheromoneField.Instance.GetNest(neighbor);
-                score = nest * 3f * nestPheroBias;
-            }
-            else 
-            {
-                float trail = PheromoneField.Instance.GetTrail(neighbor);
-                float dig = PheromoneField.Instance.GetDig(neighbor);
-                float nest = PheromoneField.Instance.GetNest(neighbor);
-                float chamber = PheromoneField.Instance.GetChamber(neighbor);
+            float trail = PheromoneField.Instance.GetTrail(neighbor);
+            float dig = PheromoneField.Instance.GetDig(neighbor);
+            //float nest = PheromoneField.Instance.GetNest(neighbor);
+            //float chamber = PheromoneField.Instance.GetChamber(neighbor);
 
-                score += trail * 0.4f * nestPheroBias;
-                score += dig * 0.3f * chamberPheroBias;
-                //score += nest * 0.6f * nestPheroBias;
-                score += chamber * 0.5f * chamberPheroBias;
+            MarchingCubesGPU chunk = _chunkManager.GetChunkAtWorldPosition(neighbor);
+            if (chunk == null) continue;
 
-                if (offset.y < 0)
-                {
-                    score *= Random.Range(1.05f, 1.010f);
-                    if (transform.position.y > descentThreshold)
-                    {
-                        score *= descentBias;
-                    }
-                }
-                else if (offset.y > 0)
-                    score *= Random.Range(0.90f, 0.95f);
-            }   
-            //score *= Random.Range(1f, randomnessBias);
+            float water = chunk.SampleWaterAtWorldPosition(neighbor);
+            float co2 = chunk.SampleCO2AtWorldPosition(neighbor);
+
+            score += water * waterBias;
+            score -= co2 * co2Bias;
+
+            score += trail * 0.1f * trailPheroBias;
+            score += dig * 0.1f * digPheroBias;
+            //score += nest * 0.6f * nestPheroBias;
+            //score += chamber * 0.5f * chamberPheroBias;
+
+            if (offset.y < 0) score *= downwardBias;
+            else if (offset.y > 0) score *= upwardBias;
+            score *= Random.Range(1f, randomnessBias);
 
             if (score > 0.01f)
             {
