@@ -35,7 +35,7 @@ public class AntAgent : MonoBehaviour
     public float directionUpdateCooldown = 2f;
 
     //Queen stats
-    private float homeBias = 1.0f;       // how strongly she returns home
+    private float homeBias = 0.2f;       // how strongly she returns home
     private Vector3 queenHomePosition;
 
     private float lastDigTime;
@@ -60,6 +60,9 @@ public class AntAgent : MonoBehaviour
     [Header("ACO Sensing")]
     public int senseDist = 5;   // max radius
     public int incPerSearch = 2;   // gap between shells (e.g. 1,3,5)
+
+    private float descentThreshold = 150f;    // above this Y, prefer going down
+    private float descentBias = 3f;     // multiplier for downward moves
 
     [Header("Overcrowding Settings")]
     public float crowdingCheckRadius = 1.5f;
@@ -168,15 +171,23 @@ public class AntAgent : MonoBehaviour
 
             // 3) Move **along** the surface just like Roam()
             Vector3 move = Vector3.ProjectOnPlane(currentDirection, smoothedNormal).normalized;
-            transform.position += move * moveSpeed * dt;
+            //transform.position += move * moveSpeed * dt;
         }
         if (GameManager.Instance.ShouldQueenLayEgg() && GameManager.Instance.CanSpawnMoreAnts())
         {
-            Vector3 spawnPos = transform.position + Random.insideUnitSphere * 2f;
-            spawnPos.y = transform.position.y;
+            // 1) pick a random offset around her
+            Vector3 raw = transform.position + Random.onUnitSphere * 2f;
+            raw.y = transform.position.y;    // keep at queen’s Y
 
-            AntAgent.Role role = GameManager.Instance.DecideNextAntRole();
-            GameManager.Instance.SpawnAntAt(spawnPos, role);
+            // 2) project that raw point back to the iso-surface (density=0)
+            Vector3 n = SampleSurfaceNormal(raw);
+            float d = SampleDensity(raw);
+            Vector3 surface = raw - n * d;        // back to the surface
+            surface += n * 1.5f;                  // hover 1.5 units above it
+
+            // 3) spawn there
+            GameManager.Instance.SpawnAntAt(surface,
+                GameManager.Instance.DecideNextAntRole());
         }
     }
 
@@ -515,12 +526,11 @@ public class AntAgent : MonoBehaviour
         float density = SampleDensity(pos);
         Vector3 normal = SampleSurfaceNormal(pos);
 
-        if (Mathf.Abs(density) < 0.02f) return;
-        else if (density >= 0.95f)
+        if (Mathf.Abs(density) <= 0f) transform.position -= Vector3.up;
+        if (density > 0f)
         {
             // small upward nudge to get it back into the tunnel
             transform.position += transform.up * moveSpeed * Time.deltaTime;
-            return;
         }
 
         if (normal == Vector3.zero)
@@ -621,7 +631,11 @@ public class AntAgent : MonoBehaviour
                 score += chamber * 0.5f * chamberPheroBias;
 
                 if (offset.y < 0)
+                {
                     score *= Random.Range(1.05f, 1.010f);
+                    if (transform.position.y > descentThreshold)
+                        score *= descentBias;
+                }
                 else if (offset.y > 0)
                     score *= Random.Range(0.90f, 0.95f);
             }   

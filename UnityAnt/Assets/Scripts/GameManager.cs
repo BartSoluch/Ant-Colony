@@ -85,7 +85,7 @@ public class GameManager : MonoBehaviour
         int workers = allAnts.FindAll(a => a.currentRole == AntAgent.Role.Worker).Count;
         int scouts = allAnts.FindAll(a => a.currentRole == AntAgent.Role.Scout).Count;
 
-        if (workers < (allAnts.Count * 0.8f))
+        if (workers < (allAnts.Count * 1f))
             return AntAgent.Role.Worker;
         else
             return AntAgent.Role.Scout;
