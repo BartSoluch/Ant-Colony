@@ -62,7 +62,7 @@ public class AntAgent : MonoBehaviour
     public int incPerSearch = 2;   // gap between shells (e.g. 1,3,5)
 
     private float descentThreshold = 150f;    // above this Y, prefer going down
-    private float descentBias = 3f;     // multiplier for downward moves
+    private float descentBias = 20f;     // multiplier for downward moves
 
     [Header("Overcrowding Settings")]
     public float crowdingCheckRadius = 1.5f;
@@ -155,6 +155,7 @@ public class AntAgent : MonoBehaviour
     {
         float dt = Time.deltaTime;
 
+        /*
         // 1) Blend her 3D heading toward home (including Y tilt)
         Vector3 rawHomeDir = queenHomePosition - transform.position;
         if (rawHomeDir.sqrMagnitude > 0.1f)
@@ -173,6 +174,19 @@ public class AntAgent : MonoBehaviour
             Vector3 move = Vector3.ProjectOnPlane(currentDirection, smoothedNormal).normalized;
             //transform.position += move * moveSpeed * dt;
         }
+        */
+
+        if (Time.time - lastDirectionUpdateTime > directionUpdateCooldown)
+        {
+            PickNewDirectionACO();
+            lastDirectionUpdateTime = Time.time;
+        }
+
+        Vector3 surfN = SampleSurfaceNormal(transform.position);
+        smoothedNormal = Vector3.Slerp(smoothedNormal, surfN, dt * 8f);
+        Vector3 move = Vector3.ProjectOnPlane(currentDirection, smoothedNormal).normalized;
+        transform.position += move * moveSpeed * dt;
+
         if (GameManager.Instance.ShouldQueenLayEgg() && GameManager.Instance.CanSpawnMoreAnts())
         {
             // 1) pick a random offset around her
@@ -526,7 +540,11 @@ public class AntAgent : MonoBehaviour
         float density = SampleDensity(pos);
         Vector3 normal = SampleSurfaceNormal(pos);
 
-        if (Mathf.Abs(density) <= 0f) transform.position -= Vector3.up;
+        if (Mathf.Abs(density) <= 0f)
+        {
+            transform.position += Vector3.down * moveSpeed * Time.deltaTime;
+            return;
+        }
         if (density > 0f)
         {
             // small upward nudge to get it back into the tunnel
@@ -627,14 +645,16 @@ public class AntAgent : MonoBehaviour
 
                 score += trail * 0.4f * nestPheroBias;
                 score += dig * 0.3f * chamberPheroBias;
-                score += nest * 0.6f * nestPheroBias;
+                //score += nest * 0.6f * nestPheroBias;
                 score += chamber * 0.5f * chamberPheroBias;
 
                 if (offset.y < 0)
                 {
                     score *= Random.Range(1.05f, 1.010f);
                     if (transform.position.y > descentThreshold)
+                    {
                         score *= descentBias;
+                    }
                 }
                 else if (offset.y > 0)
                     score *= Random.Range(0.90f, 0.95f);

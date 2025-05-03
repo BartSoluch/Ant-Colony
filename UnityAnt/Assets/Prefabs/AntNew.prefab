@@ -51,13 +51,12 @@ MonoBehaviour:
   currentState: 0
   currentRole: 0
   initialNestPheroThreshold: 150
-  hasStartedDigging: 0
   digRadius: 3
   digCooldown: 2
-  digPheroThreshold: 2
+  digPheroThreshold: 200
   moveSpeed: 2
   pheromoneDepositAmount: 1
-  directionUpdateCooldown: 2
+  directionUpdateCooldown: 1
   maxAge: 300
   energy: 100
   energyDecayRate: 1
@@ -66,7 +65,9 @@ MonoBehaviour:
   nestPheroBias: 1
   chamberPheroBias: 1
   randomnessBias: 1
-  crowdingCheckRadius: 1.5
+  senseDist: 7
+  incPerSearch: 2
+  crowdingCheckRadius: 5
   crowdingThreshold: 4
 --- !u!54 &1423924320485364743
 Rigidbody:
