@@ -1,4 +1,5 @@
 // === GameManager.cs (Fully Realistic, No Role Switching) ===
+using System;
 using UnityEngine;
 using System.Collections.Generic;
 using MarchingCubesGPUProject;
@@ -10,7 +11,7 @@ public class GameManager : MonoBehaviour
 
     [Header("Ant Colony Settings")]
     [Range(0f, 1f)] public float scoutRatio = 0.1f;
-    public int baseMaxAnts = 50;
+    public int baseMaxAnts = 20;
     public float antsPerCubicMeter = 0.5f;
     public GameObject antPrefab;
     public static bool colonyDiggingStarted = false;
@@ -18,7 +19,7 @@ public class GameManager : MonoBehaviour
     private List<AntAgent> allAnts = new();
     private float dugVolume = 0f;
     private int digCounter = 0;
-    public int digsPerColonyGrowth = 20;
+    public int digsPerColonyGrowth = 25;
     public float colonyGrowthPerBatch = 2f;
 
     void Awake()
@@ -60,7 +61,7 @@ public class GameManager : MonoBehaviour
 
     public int GetMaxAnts()
     {
-        return baseMaxAnts + Mathf.RoundToInt((dugVolume/20) * antsPerCubicMeter);
+        return Math.Max(baseMaxAnts, Mathf.RoundToInt((dugVolume/20) * antsPerCubicMeter));
     }
 
     public float GetDugVolume()
@@ -77,7 +78,7 @@ public class GameManager : MonoBehaviour
     {
         float idealAnts = dugVolume * antsPerCubicMeter;
         float pressure = Mathf.Clamp01((idealAnts - GetCurrentAntCount()) / Mathf.Max(idealAnts, 1f));
-        float randomFactor = Random.Range(0f, 1f);
+        float randomFactor = UnityEngine.Random.Range(0f, 1f);
         return (pressure + randomFactor * 0.5f) > 0.5f;
     }
 
@@ -98,6 +99,26 @@ public class GameManager : MonoBehaviour
         return allAnts
             .Where(a => a.currentRole == AntAgent.Role.Worker)
             .ToList();
+    }
+
+    public Vector3? FindWorkerCentre(Vector3 origin, float radius)
+    {
+        var workers = GetActiveWorkers();
+        Vector3 centroid = Vector3.zero;
+        int count = 0;
+
+        float radiusSqr = radius * radius;
+
+        foreach (var w in workers)
+        {
+            if ((w.transform.position - origin).sqrMagnitude <= radiusSqr)
+            {
+                centroid += w.transform.position;
+                count++;
+            }
+        }
+
+        return count > 0 ? (Vector3?)(centroid / count) : null;
     }
 
     public void SpawnAntAt(Vector3 position, AntAgent.Role role)

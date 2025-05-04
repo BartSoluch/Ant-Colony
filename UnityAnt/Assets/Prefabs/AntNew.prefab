@@ -68,7 +68,7 @@ MonoBehaviour:
   randomnessBias: 1
   downwardBias: 1
   upwardBias: 1
-  senseDist: 5
+  senseDist: 3
   incPerSearch: 2
   crowdingCheckRadius: 5
   crowdingThreshold: 3

@@ -66,11 +66,11 @@ public class AntAgent : MonoBehaviour
     public int senseDist = 7;   // max radius
     public int incPerSearch = 2;   // gap between shells (e.g. 1,3,5)
 
-    private float descentThreshold = 150f;    // above this Y, prefer going down
+    private float descentThreshold = 160f;    // above this Y, prefer going down
     private float descentBias = 50f;     // multiplier for downward moves
 
     [Header("Overcrowding Settings")]
-    public float crowdingCheckRadius = 15f;
+    public float crowdingCheckRadius = 5f;
     public int crowdingThreshold = 2;
     private float lastCrowdCheckTime = 0f;
     private float crowdCooldown = 1f;
@@ -149,13 +149,13 @@ public class AntAgent : MonoBehaviour
     }
     void AssignBiases()
     {
-        waterBias = Random.Range(0.8f, 1.2f);
-        co2Bias = Random.Range(0.8f, 1.2f);
+        waterBias = Random.Range(10f, 20f);
+        co2Bias = Random.Range(10f, 15f);
         trailPheroBias = Random.Range(0.8f, 1.2f);
         digPheroBias = Random.Range(0.8f, 1.2f);
-        randomnessBias = Random.Range(0.5f, 1.5f);
+        randomnessBias = Random.Range(0.2f, 1.8f);
         downwardBias = Random.Range(1.5f, 2.5f);
-        upwardBias = Random.Range(0.5f, 1.5f);
+        upwardBias = Random.Range(0.25f, 1.75f);
     }
 
     void HandleQueenBehavior()
@@ -194,56 +194,47 @@ public class AntAgent : MonoBehaviour
         smoothedNormal = Vector3.Slerp(smoothedNormal, surfN, dt * 8f);
         Vector3 move = Vector3.ProjectOnPlane(currentDirection, smoothedNormal).normalized;
         transform.position += move * moveSpeed * dt;
-
         */
 
         Vector3 me = transform.position;
 
-        // 1) Scan a flat ring around her for the minimum density (i.e. most open/tunneled)
-        if (GameManager.colonyDiggingStarted)
+        // 1) Compute centroid of all worker ants
+        var maybeCentre = GameManager.Instance.FindWorkerCentre(transform.position, 20f);
+        if (maybeCentre.HasValue)
         {
-            var activeWorkers = GameManager.Instance.GetActiveWorkers();
-            if (activeWorkers.Count > 0)
+            Vector3 centroid = maybeCentre.Value;
+
+            if (Time.time - lastDirectionUpdateTime > directionUpdateCooldown)
             {
-                // find the lowest‐Y worker manually
-                AntAgent lowest = activeWorkers[0];
-                for (int i = 1; i < activeWorkers.Count; i++)
-                {
-                    if (activeWorkers[i].transform.position.y < lowest.transform.position.y)
-                        lowest = activeWorkers[i];
-                }
+                currentDirection = ((Vector3)(centroid - transform.position)).normalized;
 
-                // steer toward that worker
-                Vector3 desired = (lowest.transform.position - me).normalized;
-                currentDirection = Vector3.Slerp(
-                    currentDirection,
-                    desired,
-                    dt * homeBias
-                ).normalized;
-
-                // stick to surface just like Roam()
-                Vector3 surfN = SampleSurfaceNormal(me);
-                smoothedNormal = Vector3.Slerp(smoothedNormal, surfN, dt * 8f);
-                Vector3 move = Vector3.ProjectOnPlane(currentDirection, smoothedNormal).normalized;
-                transform.position += move * moveSpeed * dt;
+                lastDirectionUpdateTime = Time.time;
             }
+            Debug.DrawLine(transform.position, centroid, Color.magenta, 0.1f);
         }
 
+        // 2) Stick to surface + move every frame (like Roam())
+        Vector3 surfN = SampleSurfaceNormal(transform.position);
+        smoothedNormal = Vector3.Slerp(smoothedNormal, surfN, dt * 8f);
+
+        Vector3 move = Vector3.ProjectOnPlane(currentDirection, smoothedNormal).normalized;
+        transform.position += move * moveSpeed * Time.deltaTime;
+
+        // 3) Egg‐laying as before
         if (GameManager.Instance.ShouldQueenLayEgg() && GameManager.Instance.CanSpawnMoreAnts())
         {
-            // 1) pick a random offset around her
             Vector3 raw = transform.position + Random.onUnitSphere * 2f;
             raw.y = transform.position.y;    // keep at queen’s Y
 
-            // 2) project that raw point back to the iso-surface (density=0)
             Vector3 n = SampleSurfaceNormal(raw);
             float d = SampleDensity(raw);
-            Vector3 surface = raw - n * d;        // back to the surface
-            surface += n * 0.5f;                  // hover 1.5 units above it
+            Vector3 surface = raw - n * d;
+            surface += n * 0.5f;
 
-            // 3) spawn there
-            GameManager.Instance.SpawnAntAt(surface,
-                GameManager.Instance.DecideNextAntRole());
+            GameManager.Instance.SpawnAntAt(
+                surface,
+                GameManager.Instance.DecideNextAntRole()
+            );
         }
     }
 
@@ -256,6 +247,7 @@ public class AntAgent : MonoBehaviour
                 if (zone != ChunkManager.ChamberType.None)
                 {
                     // begin expanding this chamber
+                    Debug.Log($"Found a Chamber!");
                     currentChamberType = (ChamberType)zone;
                     currentState = State.Expanding;
                     expansionDigCount = 0;
@@ -331,14 +323,8 @@ public class AntAgent : MonoBehaviour
 
     void AssignChamberType(Vector3 position)
     {
-        ChunkManager chunkManager = _chunkManager;
-        if (chunkManager == null) return;
-
-        MarchingCubesGPU chunk = chunkManager.GetChunkAtWorldPosition(position);
-        if (chunk == null) return;
-
-        float water = chunk.SampleWaterAtWorldPosition(position);
-        float co2 = chunk.SampleCO2AtWorldPosition(position);
+        float water = _chunkManager.SampleWaterAtWorldPosition(position);
+        float co2 = _chunkManager.SampleCO2AtWorldPosition(position);
         float depth = position.y;
 
         if (water > 0.5f && co2 < 0.3f && depth > 5f && depth < 20f)
@@ -428,14 +414,8 @@ public class AntAgent : MonoBehaviour
     {
         Vector3Int pos = Vector3Int.FloorToInt(transform.position);
 
-        ChunkManager chunkManager = _chunkManager;
-        if (chunkManager == null) return;
-
-        MarchingCubesGPU chunk = chunkManager.GetChunkAtWorldPosition(pos);
-        if (chunk == null) return;
-
-        float water = chunk.SampleWaterAtWorldPosition(pos);
-        float co2 = chunk.SampleCO2AtWorldPosition(pos);
+        float water = _chunkManager.SampleWaterAtWorldPosition(pos);
+        float co2 = _chunkManager.SampleCO2AtWorldPosition(pos);
         float depth = pos.y;
 
         float chamberScore = 0f;
@@ -537,14 +517,9 @@ public class AntAgent : MonoBehaviour
             if (density <= 0f) continue; // Only dig into solid
 
             // Sample environmental quality
-            ChunkManager chunkManager = _chunkManager;
-            if (chunkManager == null) continue;
 
-            MarchingCubesGPU chunk = chunkManager.GetChunkAtWorldPosition(check);
-            if (chunk == null) continue;
-
-            float water = chunk.SampleWaterAtWorldPosition(check);
-            float co2 = chunk.SampleCO2AtWorldPosition(check);
+            float water = _chunkManager.SampleWaterAtWorldPosition(check);
+            float co2 = _chunkManager.SampleCO2AtWorldPosition(check);
             float depth = check.y;
 
             // Calculate score
@@ -654,29 +629,34 @@ public class AntAgent : MonoBehaviour
 
     void PickNewDirectionACO()
     {
-        if (Time.time - lastCrowdCheckTime > crowdCooldown && IsOvercrowded())
+        /*
+        if (transform.position.y < descentThreshold)
         {
-            lastCrowdCheckTime = Time.time;
-            // Compute centroid of nearby ants
-            Collider[] nearby = Physics.OverlapSphere(transform.position, crowdingCheckRadius);
-            Vector3 centroid = Vector3.zero;
-            int count = 0;
-            foreach (var col in nearby)
+            if (Time.time - lastCrowdCheckTime > crowdCooldown && IsOvercrowded())
             {
-                if (col.CompareTag("Ant") && col.gameObject != this.gameObject)
+                lastCrowdCheckTime = Time.time;
+                // Compute centroid of nearby ants
+                Collider[] nearby = Physics.OverlapSphere(transform.position, crowdingCheckRadius);
+                Vector3 centroid = Vector3.zero;
+                int count = 0;
+                foreach (var col in nearby)
                 {
-                    centroid += col.transform.position;
-                    count++;
+                    if (col.CompareTag("Ant") && col.gameObject != this.gameObject)
+                    {
+                        centroid += col.transform.position;
+                        count++;
+                    }
+                }
+                if (count > 0)
+                {
+                    centroid /= count;
+                    // Repel away from crowd
+                    currentDirection = ((Vector3)(transform.position - centroid)).normalized;
+                    return;
                 }
             }
-            if (count > 0)
-            {
-                centroid /= count;
-                // Repel away from crowd
-                currentDirection = (transform.position - centroid).normalized;
-                return;
-            }
         }
+        */
 
         Vector3Int current = Vector3Int.FloorToInt(transform.position);
         var offsets = new List<Vector3Int>();
@@ -707,11 +687,8 @@ public class AntAgent : MonoBehaviour
             //float nest = PheromoneField.Instance.GetNest(neighbor);
             //float chamber = PheromoneField.Instance.GetChamber(neighbor);
 
-            MarchingCubesGPU chunk = _chunkManager.GetChunkAtWorldPosition(neighbor);
-            if (chunk == null) continue;
-
-            float water = chunk.SampleWaterAtWorldPosition(neighbor);
-            float co2 = chunk.SampleCO2AtWorldPosition(neighbor);
+            float water = _chunkManager.SampleWaterAtWorldPosition(neighbor);
+            float co2 = _chunkManager.SampleCO2AtWorldPosition(neighbor);
 
             score += water * waterBias;
             score -= co2 * co2Bias;
@@ -724,6 +701,19 @@ public class AntAgent : MonoBehaviour
             if (offset.y < 0) score *= downwardBias;
             else if (offset.y > 0) score *= upwardBias;
             score *= Random.Range(1f, randomnessBias);
+
+            /*
+            var crowdCentre = GameManager.Instance.FindWorkerCentre(transform.position, crowdingCheckRadius);
+            if (crowdCentre.HasValue)
+            {
+                Vector3 repelDir = (transform.position - crowdCentre.Value).normalized;
+                Vector3 offsetDir = ((Vector3)offset).normalized;
+
+                float alignment = Vector3.Dot(repelDir, offsetDir); // ranges -1 to 1
+
+                score *= Mathf.Lerp(1f, 1.5f, Mathf.Clamp01(alignment)); // reward directions away from cluster
+            }
+            */
 
             if (score > 0.01f)
             {
@@ -746,7 +736,7 @@ public class AntAgent : MonoBehaviour
                 }
             }
         }
-        Debug.Log("Using Fallback PickNewDirection()");
+        //Debug.Log("Using Fallback PickNewDirection()");
         PickNewDirection(); // fallback
     }
 

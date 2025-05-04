@@ -6,9 +6,9 @@ public class ChunkManager : MonoBehaviour
 {
     public GameObject chunkPrefab;
     public static int chunkSize = MarchingCubesGPU.N;  // Use as ChunkManager.chunkSize everywhere.
-    public int worldSizeX = 2;
-    public int worldSizeY = 1;
-    public int worldSizeZ = 2;
+    public int worldSizeX = 3;
+    public int worldSizeY = 3;
+    public int worldSizeZ = 3;
 
     [Header("Terrain Generation Settings")]
     public int seed = 0;
@@ -17,19 +17,29 @@ public class ChunkManager : MonoBehaviour
     public float baseGroundHeightMultiplier = 2.5f;
 
     [Header("Chamber Generation Settings")]
-    [Range(0f, 1f)] public float fungusMinDepthFrac = 0.21f;
-    [Range(0f, 1f)] public float fungusMaxDepthFrac = 0.9f;
-    [Range(0f, 1f)] public float nurseryMinDepthFrac = 0.45f;
-    [Range(0f, 1f)] public float nurseryMaxDepthFrac = 0.9f;
-    [Range(0f, 1f)] public float wasteMaxDepthFrac = 0.2f;
+    [Range(0f, 1f)] public float fungusMinDepthFrac = 0.3f;
+    [Range(0f, 1f)] public float fungusMaxDepthFrac = 0.65f;
+    [Range(0f, 1f)] public float nurseryMinDepthFrac = 0.66f;
+    [Range(0f, 1f)] public float nurseryMaxDepthFrac = 0.85f;
+    [Range(0f, 1f)] public float wasteMaxDepthFrac = 0.29f;
+
     public enum ChamberType { None, FungusGarden, Nursery, WasteDump }
     private ChamberType[,,] zoneMap;
+
+    public float[,,] waterField;
+    public float[,,] co2Field;
 
     private MarchingCubesGPU[,,] chunks;
     // A dictionary to hold a normals RenderTexture for each chunk.
     private Dictionary<Vector3Int, RenderTexture> normalsPool = new Dictionary<Vector3Int, RenderTexture>();
     void Start()
     {
+        int worldX = worldSizeX * chunkSize;
+        int worldY = worldSizeY * chunkSize;
+        int worldZ = worldSizeZ * chunkSize;
+
+        GenerateEnvironmentalFields(worldX, worldY, worldZ);
+
         chunks = new MarchingCubesGPU[worldSizeX, worldSizeY, worldSizeZ];
 
         // Step 1: Spawn all chunks
@@ -266,34 +276,41 @@ public class ChunkManager : MonoBehaviour
         float nurseryMinY = worldY * nurseryMinDepthFrac;
         float nurseryMaxY = worldY * nurseryMaxDepthFrac;
         float wasteMaxY = worldY * wasteMaxDepthFrac;
+        Debug.Log($"Ranges: WorldY = {worldY}, Fungus = {fungusMinY} to {fungusMaxY}, Nursery = {nurseryMinY} to {nurseryMaxY}, Waste = {wasteMaxY}");
 
         zoneMap = new ChamberType[worldX, worldY, worldZ];
+
+        int fungus = 0, nursery = 0, waste = 0;
 
         for (int x = 0; x < worldX; x++)
             for (int y = 0; y < worldY; y++)
                 for (int z = 0; z < worldZ; z++)
                 {
                     Vector3 worldPos = new Vector3(x + 0.5f, y + 0.5f, z + 0.5f);
-                    var chunk = GetChunkAtWorldPosition(worldPos);
-                    if (chunk == null)
-                    {
-                        zoneMap[x, y, z] = ChamberType.None;
-                        continue;
-                    }
 
-                    float water = chunk.SampleWaterAtWorldPosition(worldPos);
-                    float co2 = chunk.SampleCO2AtWorldPosition(worldPos);
+                    float water = SampleWaterAtWorldPosition(worldPos);
+                    float co2 = SampleCO2AtWorldPosition(worldPos);
                     float depth = y;
 
-                    if (water > 0.6f && co2 < 0.3f && depth >= fungusMinY && depth <= fungusMaxY)
+                    if (water >= 0.6f && co2 <= 0.3f && depth >= fungusMinY && depth <= fungusMaxY)
+                    {
                         zoneMap[x, y, z] = ChamberType.FungusGarden;
-                    else if (water > 0.4f && water < 0.6f && co2 < 0.3f && depth >= nurseryMinY && depth <= nurseryMaxY)
+                        fungus++;
+                    }
+                    else if (water >= 0.4f && water < 0.6f && co2 <= 0.3f && depth >= nurseryMinY && depth <= nurseryMaxY)
+                    {
                         zoneMap[x, y, z] = ChamberType.Nursery;
-                    else if (co2 > 0.5f && water < 0.3f && depth <= wasteMaxY)
+                        nursery++;
+                    }
+                    else if (co2 >= 0.5f && water <= 0.4f && depth <= wasteMaxY)
+                    {
                         zoneMap[x, y, z] = ChamberType.WasteDump;
+                        waste++;
+                    }
                     else
                         zoneMap[x, y, z] = ChamberType.None;
                 }
+        Debug.Log($"Zones: Fungus={fungus}, Nursery={nursery}, Waste={waste}");
     }
 
     public ChamberType GetZoneAtVoxel(Vector3 worldPos)
@@ -305,4 +322,99 @@ public class ChunkManager : MonoBehaviour
             return ChamberType.None;
         return zoneMap[idx.x, idx.y, idx.z];
     }
+
+    void GenerateEnvironmentalFields(int worldX, int worldY, int worldZ)
+    {
+        waterField = new float[worldX, worldY, worldZ];
+        co2Field = new float[worldX, worldY, worldZ];
+
+        List<Blob> waterBlobs = GenerateBlobs(50, worldY/3f, worldY, 25f, 75f, 1f, 50f);
+        List<Blob> co2Blobs = GenerateBlobs(50, 0f, 2f * worldY/3f, 20f, 50f, 1f, 50f);
+
+        for (int x = 0; x < worldX; x++)
+            for (int y = 0; y < worldY; y++)
+                for (int z = 0; z < worldZ; z++)
+                {
+                    Vector3 worldPos = new Vector3(x + 0.5f, y + 0.5f, z + 0.5f);
+                    waterField[x, y, z] = AccumulateBlobs(worldPos, waterBlobs);
+                    co2Field[x, y, z] = AccumulateBlobs(worldPos, co2Blobs);
+                }
+    }
+
+    struct Blob
+    {
+        public Vector3 center;
+        public float radius;
+        public float strength;
+    }
+
+    List<Blob> GenerateBlobs(int count, float minY, float maxY, float radiusMin, float radiusMax, float strength, float seedOffset)
+    {
+        List<Blob> blobs = new();
+        Random.InitState(seed + Mathf.FloorToInt(seedOffset));
+        int worldX = worldSizeX * chunkSize;
+        int worldZ = worldSizeZ * chunkSize;
+
+        for (int i = 0; i < count; i++)
+        {
+            float x = Random.Range(0f, worldX);
+            float y = Random.Range(minY, maxY);
+            float z = Random.Range(0f, worldZ);
+            float r = Random.Range(radiusMin, radiusMax);
+
+            blobs.Add(new Blob
+            {
+                center = new Vector3(x, y, z),
+                radius = r,
+                strength = strength
+            });
+        }
+        return blobs;
+    }
+
+    float AccumulateBlobs(Vector3 pos, List<Blob> blobs)
+    {
+        float total = 0f;
+        foreach (var blob in blobs)
+        {
+            float dist = Vector3.Distance(pos, blob.center);
+            if (dist < blob.radius)
+            {
+                float falloff = Mathf.Exp(-Mathf.Pow(dist / blob.radius, 2));
+                total += blob.strength * falloff;
+            }
+        }
+        return Mathf.Clamp01(total);
+    }
+
+    public float SampleWaterAtWorldPosition(Vector3 worldPos)
+    {
+        int x = Mathf.FloorToInt(worldPos.x);
+        int y = Mathf.FloorToInt(worldPos.y);
+        int z = Mathf.FloorToInt(worldPos.z);
+
+        if (x < 0 || y < 0 || z < 0
+         || x >= waterField.GetLength(0)
+         || y >= waterField.GetLength(1)
+         || z >= waterField.GetLength(2))
+            return 0f;
+
+        return waterField[x, y, z];
+    }
+
+    public float SampleCO2AtWorldPosition(Vector3 worldPos)
+    {
+        int x = Mathf.FloorToInt(worldPos.x);
+        int y = Mathf.FloorToInt(worldPos.y);
+        int z = Mathf.FloorToInt(worldPos.z);
+
+        if (x < 0 || y < 0 || z < 0
+         || x >= co2Field.GetLength(0)
+         || y >= co2Field.GetLength(1)
+         || z >= co2Field.GetLength(2))
+            return 0f;
+
+        return co2Field[x, y, z];
+    }
+
 }

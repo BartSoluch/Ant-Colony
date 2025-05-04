@@ -47,8 +47,8 @@ namespace MarchingCubesGPUProject
         [HideInInspector] public float groundVariationMultiplier = 0.5f;
         [HideInInspector] public float baseGroundHeightMultiplier = 2.5f;
 
-        private float[] waterGradient; // same size as density field
-        private float[] co2Gradient;
+        //private float[] waterGradient; // same size as density field
+        //private float[] co2Gradient;
 
         void Start()
         {
@@ -86,8 +86,8 @@ namespace MarchingCubesGPUProject
             float co2OffsetX = Mathf.Abs(Mathf.Sin((m_seed + 300) * 45.164f) * 43758.5453f) % 1000f;
             float co2OffsetZ = Mathf.Abs(Mathf.Sin((m_seed + 400) * 31.416f) * 43758.5453f) % 1000f;
 
-            waterGradient = new float[voxelCount];
-            co2Gradient = new float[voxelCount];
+            //waterGradient = new float[voxelCount];
+            //co2Gradient = new float[voxelCount];
 
             for (int z = 0; z < densityWidth; z++)
             {
@@ -113,8 +113,8 @@ namespace MarchingCubesGPUProject
 
                         flatDensity[i] = density;
 
-                        waterGradient[i] = Mathf.Clamp01(1.0f - (worldY / (N * 5f)));
-                        co2Gradient[i] = Mathf.Clamp01(worldY / (N * 5f));
+                        //waterGradient[i] = Mathf.Clamp01(1.0f - (worldY / (N * 5f)));
+                        //co2Gradient[i] = Mathf.Clamp01(worldY / (N * 5f));
                     }
                 }
             }
@@ -127,6 +127,7 @@ namespace MarchingCubesGPUProject
 
             Debug.Log("Marching Cubes GPU: Dispatched all shaders");
         }
+        /*
         public float SampleWaterAtWorldPosition(Vector3 worldPos)
         {
             Vector3 localPos = worldPos - ChunkWorldPosition;
@@ -164,6 +165,7 @@ namespace MarchingCubesGPUProject
 
             return co2Gradient[index];
         }
+        */
 
         void Awake()
         {
