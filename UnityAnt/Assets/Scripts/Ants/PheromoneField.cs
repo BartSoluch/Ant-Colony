@@ -1,6 +1,7 @@
 ﻿using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 
 public class PheromoneField : MonoBehaviour
 {
@@ -243,5 +244,33 @@ public class PheromoneField : MonoBehaviour
                pos.y >= 0 && pos.y < worldSize.y &&
                pos.z >= 0 && pos.z < worldSize.z;
     }
+    public void SaveAllPheromones(string folderPath, int timestep)
+    {
+        SaveGridToFile(digPheromones, "dig", folderPath, timestep);
+        SaveGridToFile(trailPheromones, "trail", folderPath, timestep);
+        SaveGridToFile(nestPheromones, "nest", folderPath, timestep);
+        SaveGridToFile(chamberPheromones, "chamber", folderPath, timestep);
+    }
+
+    private void SaveGridToFile(float[,,] grid, string name, string folder, int timestep)
+    {
+        string filename = Path.Combine(folder, $"{name}_t{timestep}.bin");
+        using (BinaryWriter writer = new BinaryWriter(File.Open(filename, FileMode.Create)))
+        {
+            int xLen = grid.GetLength(0);
+            int yLen = grid.GetLength(1);
+            int zLen = grid.GetLength(2);
+            for (int x = 0; x < xLen; x++)
+                for (int y = 0; y < yLen; y++)
+                    for (int z = 0; z < zLen; z++)
+                        writer.Write(grid[x, y, z]);
+        }
+        Debug.Log($"[Snapshot] Saved pheromone '{name}' for t={timestep}");
+    }
+    // === Public Accessors for Pheromone Grids ===
+    public float[,,] GetDigGrid() => digPheromones;
+    public float[,,] GetTrailGrid() => trailPheromones;
+    public float[,,] GetNestGrid() => nestPheromones;
+    public float[,,] GetChamberGrid() => chamberPheromones;
 
 }

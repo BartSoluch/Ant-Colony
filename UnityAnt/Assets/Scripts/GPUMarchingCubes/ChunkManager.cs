@@ -1,6 +1,7 @@
 using MarchingCubesGPUProject;
 using UnityEngine;
 using System.Collections.Generic;
+using System.IO;
 
 public class ChunkManager : MonoBehaviour
 {
@@ -415,6 +416,39 @@ public class ChunkManager : MonoBehaviour
             return 0f;
 
         return co2Field[x, y, z];
+    }
+    public void SaveAllChunkDensities(int snapshotId)
+    {
+        string projectRoot = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
+        string basePath = Path.GetFullPath(Path.Combine(projectRoot, "../..", "Ant-Colony-Results"));
+        Directory.CreateDirectory(basePath);
+
+        foreach (var chunk in GetAllChunks())
+        {
+            chunk.SaveDensityToFile(basePath, snapshotId);
+        }
+
+        Debug.Log($"[Snapshot] All chunk densities saved to {basePath} for t={snapshotId}");
+    }
+
+    public IEnumerable<MarchingCubesGPU> GetAllChunks()
+    {
+        foreach (var chunk in chunks)
+            if (chunk != null)
+                yield return chunk;
+    }
+    public bool IsInitialized()
+    {
+        if (chunks == null)
+            return false;
+
+        foreach (var chunk in chunks)
+        {
+            if (chunk == null || chunk.GetNoiseBuffer() == null)
+                return false;
+        }
+
+        return true;
     }
 
 }

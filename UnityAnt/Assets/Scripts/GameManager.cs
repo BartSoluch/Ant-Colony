@@ -128,4 +128,5 @@ public class GameManager : MonoBehaviour
         agent.currentRole = role;
         RegisterAnt(agent);
     }
+
 }

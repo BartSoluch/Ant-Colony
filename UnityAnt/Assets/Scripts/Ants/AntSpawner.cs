@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using MarchingCubesGPUProject; // Needed for ChunkManager reference
 
@@ -6,6 +7,7 @@ public class AntSpawner : MonoBehaviour
 {
     public GameObject antPrefab;
     public int numberOfAnts = 10;
+    public static List<AntAgent> AllAnts { get; private set; } = new();
 
     void Start()
     {
@@ -50,6 +52,7 @@ public class AntSpawner : MonoBehaviour
             AntAgent queenAgent = queen.GetComponent<AntAgent>();
             queenAgent.currentRole = AntAgent.Role.Queen;
             GameManager.Instance.RegisterAnt(queenAgent);
+            AllAnts.Add(queenAgent); // 🔥 Track queen
             Debug.Log("👑 Spawned Queen at " + queenSpawnPos);
         }
         else
@@ -77,6 +80,7 @@ public class AntSpawner : MonoBehaviour
                     : AntAgent.Role.Worker;
 
                 GameManager.Instance.RegisterAnt(agent);
+                AllAnts.Add(agent);
                 Debug.Log($"Spawned {agent.currentRole} Ant {i} at {spawnPos}");
             }
             else

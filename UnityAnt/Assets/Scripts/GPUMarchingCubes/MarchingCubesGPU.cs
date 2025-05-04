@@ -2,6 +2,7 @@
 using UnityEngine.Rendering;
 using System.Collections.Generic;
 using ImprovedPerlinNoiseProject;
+using System.IO;
 
 #pragma warning disable 162
 
@@ -443,5 +444,34 @@ namespace MarchingCubesGPUProject
 
             return d;
         }
+        public void SaveDensityToFile(string folderPath, int snapshotId)
+        {
+            int paddedWidth = N + 1 + P * 2;
+            int voxelCount = paddedWidth * paddedWidth * paddedWidth;
+
+            if (cpuDensity == null || cpuDensity.Length != voxelCount)
+                cpuDensity = new float[voxelCount];
+
+            m_noiseBuffer.GetData(cpuDensity); // always safe now
+
+            string fileName = $"chunk_{ChunkCoord.x}_{ChunkCoord.y}_{ChunkCoord.z}_t{snapshotId}.bin";
+            string fullPath = Path.Combine(folderPath, fileName);
+
+            using (FileStream fs = new FileStream(fullPath, FileMode.Create))
+            using (BinaryWriter writer = new BinaryWriter(fs))
+            {
+                writer.Write(paddedWidth);
+                writer.Write(cpuDensity.Length);
+                for (int i = 0; i < cpuDensity.Length; i++)
+                    writer.Write(cpuDensity[i]);
+            }
+
+            Debug.Log($"[Snapshot] Saved {fileName}");
+        }
+        public ComputeBuffer GetNoiseBuffer()
+        {
+            return m_noiseBuffer;
+        }
+
     }
 }

@@ -1,6 +1,7 @@
 ﻿// === AntAgent.cs (with Nest Site Selection, Stigmergy) ===
 using MarchingCubesGPUProject;
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 
 public class AntAgent : MonoBehaviour
@@ -764,5 +765,14 @@ public class AntAgent : MonoBehaviour
                 UnityEditor.Handles.Label(pos + Vector3.up * 1.5f, $"Densities: here={here:F2}, up={above:F2}, down={below:F2}", style);
         #endif
     }
+    public string SerializeState()
+    {
+        string id = gameObject.GetInstanceID().ToString();
+        Vector3 pos = transform.position;
+        string role = currentRole.ToString();
+        string state = currentState.ToString();
 
+        return $"{id},{name},{pos.x:F2},{pos.y:F2},{pos.z:F2},{role},{state}," +
+               $"{waterBias:F2},{co2Bias:F2},{trailPheroBias:F2},{digPheroBias:F2},{randomnessBias:F2},{downwardBias:F2},{upwardBias:F2}";
+    }
 }
