@@ -39,7 +39,8 @@ public class AntAgent : MonoBehaviour
 
     //Queen stats
     private float homeBias = 0.2f;       // how strongly she returns home
-    private Vector3 queenHomePosition;
+    private bool queenHasSettled = false;
+    private Vector3 queenSettlePosition;
 
     private float lastDigTime;
     private float lastDirectionUpdateTime;
@@ -75,20 +76,18 @@ public class AntAgent : MonoBehaviour
     private float lastCrowdCheckTime = 0f;
     private float crowdCooldown = 1f;
 
+    private float spawnTime;
     private Animator animator;
     private ChunkManager _chunkManager;
 
     void Start()
     {
+        spawnTime = Time.time;
         _chunkManager = FindFirstObjectByType<ChunkManager>();
         PickNewDirectionACO();
         animator = GetComponentInChildren<Animator>();
         AssignLifespanAndEnergy();
         AssignBiases();
-        if (currentRole == Role.Queen)
-        {
-            queenHomePosition = transform.position;
-        }
     }
 
     void Update()
@@ -198,20 +197,21 @@ public class AntAgent : MonoBehaviour
 
         Vector3 me = transform.position;
 
-        // 1) Compute centroid of all worker ants
-        var maybeCentre = GameManager.Instance.FindWorkerCentre(transform.position, 20f);
-        if (maybeCentre.HasValue)
+        if (!queenHasSettled && transform.position.y <= 150f)
         {
-            Vector3 centroid = maybeCentre.Value;
-
-            if (Time.time - lastDirectionUpdateTime > directionUpdateCooldown)
-            {
-                currentDirection = ((Vector3)(centroid - transform.position)).normalized;
-
-                lastDirectionUpdateTime = Time.time;
-            }
-            Debug.DrawLine(transform.position, centroid, Color.magenta, 0.1f);
+            queenHasSettled = true;
+            queenSettlePosition = transform.position;
         }
+
+        // 1) Compute centroid of all worker ants
+        Vector3 target = queenHasSettled ? queenSettlePosition : (GameManager.Instance.FindWorkerCentre(transform.position, 20f) ?? transform.position);
+
+        if (Time.time - lastDirectionUpdateTime > directionUpdateCooldown)
+        {
+            currentDirection = (target - transform.position).normalized;
+            lastDirectionUpdateTime = Time.time;
+        }
+        Debug.DrawLine(transform.position, target, Color.magenta, 0.1f);
 
         // 2) Stick to surface + move every frame (like Roam())
         Vector3 surfN = SampleSurfaceNormal(transform.position);
@@ -367,7 +367,7 @@ public class AntAgent : MonoBehaviour
             float localNest = PheromoneField.Instance.GetNest(pos);
             Vector3Int bestDigTarget = GetBestDigTarget();
 
-            if (!GameManager.colonyDiggingStarted)
+            if (!GameManager.colonyDiggingStarted && Time.time - spawnTime >= 15f)
             {
                 if (bestDigTarget != Vector3Int.zero && localNest >= initialNestPheroThreshold)
                 {
@@ -376,7 +376,7 @@ public class AntAgent : MonoBehaviour
                     GameManager.colonyDiggingStarted = true;
                 }
             }
-            else
+            else if (Time.time - spawnTime >= 15f)
             {
                 if (bestDigTarget != Vector3Int.zero)
                 {
@@ -385,10 +385,6 @@ public class AntAgent : MonoBehaviour
                 else if (Random.value < 0.01f)
                 {
                     currentState = State.Digging;
-                }
-                if (PheromoneField.Instance.GetChamber(pos) > 2f)
-                {
-                    currentState = State.Expanding;
                 }
             }
             if (Time.time - lastDirectionUpdateTime > directionUpdateCooldown)
