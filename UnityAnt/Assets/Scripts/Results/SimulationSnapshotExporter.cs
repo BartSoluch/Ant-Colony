@@ -20,8 +20,12 @@ public class SimulationSnapshotExporter : MonoBehaviour
     private string chunkPath;
     private string antPath;
     private string pheromonePath;
+    private GameManager _gameManager;
+    private bool chamberSummarySaved = false;
+
     void Start()
     {
+        _gameManager = FindFirstObjectByType<GameManager>();
         string projectRoot = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
         string basePath = Path.GetFullPath(Path.Combine(projectRoot, "..", "Ant-Colony-Results"));
 
@@ -44,11 +48,22 @@ public class SimulationSnapshotExporter : MonoBehaviour
     }
     void Update()
     {
+
         if (Time.time >= nextSnapshotTime)
         {
             QueueSnapshot(snapshotId++);
             nextSnapshotTime = Time.time + snapshotInterval;
         }
+        if (!chamberSummarySaved && _gameManager.GetCurrentAntCount() == 0 && snapshotId > 50)
+        {
+            SaveChamberZoneSummary(snapshotId);
+            chamberSummarySaved = true;
+        }
+    }
+
+    public string GetSimulationFolder()
+    {
+        return simulationRootPath;
     }
 
     void OnDestroy()
@@ -61,7 +76,7 @@ public class SimulationSnapshotExporter : MonoBehaviour
     {
         // === 1. Get Ant Data ===
         var antLines = new List<string>();
-        foreach (var ant in AntSpawner.AllAnts)
+        foreach (var ant in _gameManager.allAnts)
         {
             antLines.Add(ant.SerializeState());
         }
@@ -119,6 +134,7 @@ public class SimulationSnapshotExporter : MonoBehaviour
             }
         }
     }
+
     void SaveSnapshot(SnapshotJob job)
     {
         // === Save Ant Data ===
@@ -138,13 +154,75 @@ public class SimulationSnapshotExporter : MonoBehaviour
                 writer.Write(chunk.densities[i]);
         }
 
+        /*
         // === Save Pheromone Grids ===
         if (PheromoneField.Instance != null)
         {
             PheromoneField.Instance.SaveAllPheromones(pheromonePath, job.id);
         }
+        */
 
-        Debug.Log($"[SnapshotExporter] ✔ Saved snapshot {job.id} in {simulationRootPath}");
+        Debug.Log($"[SnapshotExporter] Saved snapshot {job.id} in {simulationRootPath}");
+    }
+
+    void SaveChamberZoneSummary(int snapshotId)
+    {
+        var chunkManager = GameObject.FindFirstObjectByType<ChunkManager>();
+        if (chunkManager == null) return;
+
+        int fungus = 0, nursery = 0, waste = 0, none = 0;
+
+        foreach (var chunk in chunkManager.GetAllChunks())
+        {
+            var buffer = chunk.GetNoiseBuffer();
+            if (buffer == null) continue;
+
+            int padded = MarchingCubesGPU.N + 1 + 2;
+            int count = padded * padded * padded;
+            float[] density = new float[count];
+            buffer.GetData(density);
+
+            Vector3Int chunkBase = chunk.ChunkCoord * MarchingCubesGPU.N;
+
+            for (int i = 0; i < count; i++)
+            {
+                int x = i % padded;
+                int y = (i / padded) % padded;
+                int z = i / (padded * padded);
+
+                Vector3Int worldPos = chunkBase + new Vector3Int(x - 1, y - 1, z - 1);
+                if (worldPos.x < 0 || worldPos.y < 0 || worldPos.z < 0) continue;
+
+                if (density[i] < 0f)
+                {
+                    var zone = chunkManager.GetZoneAtVoxel(worldPos);
+                    switch (zone)
+                    {
+                        case ChunkManager.ChamberType.FungusGarden: fungus++; break;
+                        case ChunkManager.ChamberType.Nursery: nursery++; break;
+                        case ChunkManager.ChamberType.WasteDump: waste++; break;
+                        default: none++; break;
+                    }
+                }
+            }
+        }
+
+        string chamberDir = Path.Combine(simulationRootPath, "chambers");
+        Directory.CreateDirectory(chamberDir);
+        if (!Directory.Exists(chamberDir))
+        {
+            Debug.LogWarning($"Failed to create chamber directory: {chamberDir}");
+        }
+        string outputPath = Path.Combine(chamberDir, $"chamber_summary_t{snapshotId}.csv");
+
+        using StreamWriter writer = new StreamWriter(outputPath);
+        writer.WriteLine("Zone,Count");
+        writer.WriteLine($"FungusGarden,{fungus}");
+        writer.WriteLine($"Nursery,{nursery}");
+        writer.WriteLine($"WasteDump,{waste}");
+        writer.WriteLine($"None,{none}");
+
+        Debug.Log($"[SnapshotExporter] Wrote chamber summary to {outputPath}");
     }
 
     // === Structs ===
@@ -169,7 +247,7 @@ public class SimulationSnapshotExporter : MonoBehaviour
             yield return null;
 
         // Optional: wait another short moment for ComputeBuffers/fields to finish initializing
-        yield return new WaitForSeconds(0.5f);
+        yield return new WaitForSeconds(5f);
 
         // Take snapshot 0 after full system is ready
         QueueSnapshot(snapshotId++);

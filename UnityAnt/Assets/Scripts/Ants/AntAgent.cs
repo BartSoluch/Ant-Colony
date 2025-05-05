@@ -32,6 +32,8 @@ public class AntAgent : MonoBehaviour
     [Header("Chamber Expansion Settings")]
     public int maxExpansionDigs = 50;
     private int expansionDigCount = 0;
+    private int failCount = 0;
+    private int maxFails = 25;
 
     [Header("Ant Movement Settings")]
     public float moveSpeed = 1.5f;
@@ -69,7 +71,7 @@ public class AntAgent : MonoBehaviour
     public int incPerSearch = 2;   // gap between shells (e.g. 1,3,5)
 
     private float descentThreshold = 160f;    // above this Y, prefer going down
-    private float descentBias = 50f;     // multiplier for downward moves
+    //private float descentBias = 50f;     // multiplier for downward moves
 
     [Header("Overcrowding Settings")]
     public float crowdingCheckRadius = 5f;
@@ -124,6 +126,7 @@ public class AntAgent : MonoBehaviour
     {
         isDead = true;
         GameManager.Instance.NotifyAntDeath(this);
+        AntSpawner.AllAnts.Remove(this);
         Destroy(gameObject);
     }
     void AssignLifespanAndEnergy()
@@ -141,64 +144,29 @@ public class AntAgent : MonoBehaviour
                 energyDecayRate = 0.7f; // Faster decay
                 break;
             case Role.Queen:
-                maxAge = Random.Range(1200f, 3600f); // 20-60 min (or even infinite for test)
-                energy = 300f;
+                maxAge = 1200f; // 20-60 min (or even infinite for test)
+                energy = 120f;
                 energyDecayRate = 0.1f; // Very slow decay
                 break;
         }
     }
     void AssignBiases()
     {
-        waterBias = Random.Range(10f, 20f);
-        co2Bias = Random.Range(10f, 15f);
-        trailPheroBias = Random.Range(0.8f, 1.2f);
-        digPheroBias = Random.Range(0.8f, 1.2f);
-        randomnessBias = Random.Range(0.2f, 1.8f);
-        downwardBias = Random.Range(1.5f, 2.5f);
-        upwardBias = Random.Range(0.25f, 1.75f);
+        waterBias = Random.Range(50f, 100f);
+        co2Bias = Random.Range(25f, 75f);
+        trailPheroBias = Random.Range(0.5f, 1.5f);
+        digPheroBias = Random.Range(0.5f, 1.5f);
+        randomnessBias = Random.Range(-1f, 2f);
+        downwardBias = Random.Range(0.75f, 2f);
+        upwardBias = Random.Range(0.5f, 1.5f);
     }
 
     void HandleQueenBehavior()
     {
         float dt = Time.deltaTime;
-
-        /*
-        // 1) Blend her 3D heading toward home (including Y tilt)
-        Vector3 rawHomeDir = queenHomePosition - transform.position;
-        if (rawHomeDir.sqrMagnitude > 0.1f)
-        {
-            currentDirection = Vector3.Slerp(
-                currentDirection,
-                rawHomeDir.normalized,
-                dt * homeBias
-            ).normalized;
-
-            // 2) Update smoothedNormal from SDF
-            Vector3 surfN = SampleSurfaceNormal(transform.position);
-            smoothedNormal = Vector3.Slerp(smoothedNormal, surfN, dt * 8f);
-
-            // 3) Move **along** the surface just like Roam()
-            Vector3 move = Vector3.ProjectOnPlane(currentDirection, smoothedNormal).normalized;
-            //transform.position += move * moveSpeed * dt;
-        }
-        
-
-
-        if (Time.time - lastDirectionUpdateTime > directionUpdateCooldown)
-        {
-            PickNewDirectionACO();
-            lastDirectionUpdateTime = Time.time;
-        }
-        
-        Vector3 surfN = SampleSurfaceNormal(transform.position);
-        smoothedNormal = Vector3.Slerp(smoothedNormal, surfN, dt * 8f);
-        Vector3 move = Vector3.ProjectOnPlane(currentDirection, smoothedNormal).normalized;
-        transform.position += move * moveSpeed * dt;
-        */
-
         Vector3 me = transform.position;
 
-        if (!queenHasSettled && transform.position.y <= 150f)
+        if (!queenHasSettled && transform.position.y <= 160f)
         {
             queenHasSettled = true;
             queenSettlePosition = transform.position;
@@ -224,18 +192,40 @@ public class AntAgent : MonoBehaviour
         // 3) Egg‐laying as before
         if (GameManager.Instance.ShouldQueenLayEgg() && GameManager.Instance.CanSpawnMoreAnts())
         {
-            Vector3 raw = transform.position + Random.onUnitSphere * 2f;
-            raw.y = transform.position.y;    // keep at queen’s Y
+            for (int attempt = 0; attempt < 5; attempt++)
+            {
+                Vector3 raw = transform.position + Random.onUnitSphere * 2f;
+                raw.y = transform.position.y; // maintain Queen's Y
 
-            Vector3 n = SampleSurfaceNormal(raw);
-            float d = SampleDensity(raw);
-            Vector3 surface = raw - n * d;
-            surface += n * 0.5f;
+                Vector3 n = SampleSurfaceNormal(raw);
+                if (n == Vector3.zero) continue; // skip bad surface
 
-            GameManager.Instance.SpawnAntAt(
-                surface,
-                GameManager.Instance.DecideNextAntRole()
-            );
+                float d = SampleDensity(raw);
+                Vector3 surface = raw - n * d + n * 0.5f;
+
+                // Check if spawn point is inside solid
+                if (SampleDensity(surface) > 0.1f) continue;
+
+                // Check for collision with other ants
+                Collider[] overlaps = Physics.OverlapSphere(surface, 0.5f);
+                bool blocked = false;
+                foreach (var col in overlaps)
+                {
+                    if (col.CompareTag("Ant"))
+                    {
+                        blocked = true;
+                        break;
+                    }
+                }
+                if (blocked) continue;
+
+                // ✅ Valid spawn position
+                GameManager.Instance.SpawnAntAt(
+                    surface,
+                    GameManager.Instance.DecideNextAntRole()
+                );
+                break; // only spawn one per frame
+            }
         }
     }
 
@@ -287,11 +277,14 @@ public class AntAgent : MonoBehaviour
         Vector3 digPos = transform.position + currentDirection * 1.5f;
 
         float digPhero = PheromoneField.Instance.GetDig(Vector3Int.FloorToInt(transform.position));
-        
-        chunkManager.DigAtWorldPosition(digPos, digRadius);
-        GameManager.Instance.RegisterDigEvent();
-        PheromoneField.Instance.DepositDig(digPos, pheromoneDepositAmount);
-        
+        var zone = _chunkManager.GetZoneAtVoxel(transform.position);
+
+        if (zone == ChunkManager.ChamberType.None)
+        {
+            chunkManager.DigAtWorldPosition(digPos, digRadius);
+            GameManager.Instance.RegisterDigEvent();
+            PheromoneField.Instance.DepositDig(digPos, pheromoneDepositAmount);
+        }
 
         if (digPhero > digPheroThreshold && transform.position.y < 150f)
             currentState = State.Expanding;
@@ -302,25 +295,39 @@ public class AntAgent : MonoBehaviour
     void ExpandChamber()
     {
         // stop after max digs
-        if (expansionDigCount >= maxExpansionDigs)
+        if (expansionDigCount >= maxExpansionDigs || failCount >= maxFails)
         {
-            //currentState = State.Roaming;
+            currentState = State.Roaming;
+            failCount = 0;
             return;
         }
+
+        // obey dig cooldown
+        if (Time.time - lastDigTime < digCooldown)
+            return;
+
+        lastDigTime = Time.time;
 
         // pick a random horizontal direction
         Vector2 dir2D = Random.insideUnitCircle.normalized;
         Vector3 dir3D = new Vector3(dir2D.x, 0f, dir2D.y);
         Vector3 digPos = transform.position + dir3D * (digRadius * 1.2f);
 
+        // only dig within the same chamber zone
+        var targetZone = _chunkManager.GetZoneAtVoxel(digPos);
+        if ((ChamberType)targetZone != currentChamberType)
+        {
+            failCount++;
+            return;
+        }
+
         // do the actual dig
         _chunkManager?.DigAtWorldPosition(digPos, digRadius * 1.2f);
         PheromoneField.Instance.DepositDig(digPos, pheromoneDepositAmount * 1.2f);
 
         expansionDigCount++;
-
-        // stay in Expanding until done
     }
+
 
     void AssignChamberType(Vector3 position)
     {
@@ -367,6 +374,7 @@ public class AntAgent : MonoBehaviour
             Vector3Int pos = Vector3Int.FloorToInt(transform.position);
             float localNest = PheromoneField.Instance.GetNest(pos);
             Vector3Int bestDigTarget = GetBestDigTarget();
+            var zone = _chunkManager.GetZoneAtVoxel(transform.position);
 
             if (!GameManager.colonyDiggingStarted && Time.time - spawnTime >= 15f)
             {
@@ -557,17 +565,16 @@ public class AntAgent : MonoBehaviour
         float density = SampleDensity(pos);
         Vector3 normal = SampleSurfaceNormal(pos);
 
-        if (Mathf.Abs(density) <= 0f)
+        if (density <= -0.9f)
         {
             transform.position += Vector3.down * moveSpeed * Time.deltaTime;
             return;
         }
-        if (density > 0f)
+        else if (density > 0.5f)
         {
             // small upward nudge to get it back into the tunnel
-            transform.position += transform.up * moveSpeed * Time.deltaTime;
+            transform.position += transform.up * moveSpeed * Time.deltaTime * density;
         }
-
         if (normal == Vector3.zero)
         {
             // Try to nudge ant in a random direction to escape flat zone
@@ -626,35 +633,6 @@ public class AntAgent : MonoBehaviour
 
     void PickNewDirectionACO()
     {
-        /*
-        if (transform.position.y < descentThreshold)
-        {
-            if (Time.time - lastCrowdCheckTime > crowdCooldown && IsOvercrowded())
-            {
-                lastCrowdCheckTime = Time.time;
-                // Compute centroid of nearby ants
-                Collider[] nearby = Physics.OverlapSphere(transform.position, crowdingCheckRadius);
-                Vector3 centroid = Vector3.zero;
-                int count = 0;
-                foreach (var col in nearby)
-                {
-                    if (col.CompareTag("Ant") && col.gameObject != this.gameObject)
-                    {
-                        centroid += col.transform.position;
-                        count++;
-                    }
-                }
-                if (count > 0)
-                {
-                    centroid /= count;
-                    // Repel away from crowd
-                    currentDirection = ((Vector3)(transform.position - centroid)).normalized;
-                    return;
-                }
-            }
-        }
-        */
-
         Vector3Int current = Vector3Int.FloorToInt(transform.position);
         var offsets = new List<Vector3Int>();
         for (int r = 1; r <= senseDist; r += incPerSearch)
@@ -691,7 +669,7 @@ public class AntAgent : MonoBehaviour
             score -= co2 * co2Bias;
 
             score += trail * 0.1f * trailPheroBias;
-            score += dig * 0.1f * digPheroBias;
+            score += dig * digPheroBias;
             //score += nest * 0.6f * nestPheroBias;
             //score += chamber * 0.5f * chamberPheroBias;
 
@@ -699,7 +677,7 @@ public class AntAgent : MonoBehaviour
             else if (offset.y > 0) score *= upwardBias;
             score *= Random.Range(1f, randomnessBias);
 
-            /*
+            
             var crowdCentre = GameManager.Instance.FindWorkerCentre(transform.position, crowdingCheckRadius);
             if (crowdCentre.HasValue)
             {
@@ -708,9 +686,9 @@ public class AntAgent : MonoBehaviour
 
                 float alignment = Vector3.Dot(repelDir, offsetDir); // ranges -1 to 1
 
-                score *= Mathf.Lerp(1f, 1.5f, Mathf.Clamp01(alignment)); // reward directions away from cluster
+                score *= Mathf.Lerp(2f, 5f, Mathf.Clamp01(alignment)); // reward directions away from cluster
             }
-            */
+            
 
             if (score > 0.01f)
             {
@@ -721,17 +699,15 @@ public class AntAgent : MonoBehaviour
 
         if (candidates.Count > 0)
         {
-            float r = Random.Range(0f, totalScore);
-            float running = 0f;
-            foreach (var (pos, score) in candidates)
+            var best = candidates[0];
+            foreach (var candidate in candidates)
             {
-                running += score;
-                if (r <= running)
-                {
-                    currentDirection = ((Vector3)(pos - current)).normalized;
-                    return;
-                }
+                if (candidate.score > best.score)
+                    best = candidate;
             }
+
+            currentDirection = ((Vector3)(best.pos - current)).normalized;
+            return;
         }
         //Debug.Log("Using Fallback PickNewDirection()");
         PickNewDirection(); // fallback

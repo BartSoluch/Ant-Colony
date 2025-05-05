@@ -85,6 +85,9 @@ public class PheromoneField : MonoBehaviour
 
     void Update()
     {
+        if (Time.frameCount % 60 == 0)  // print every ~1 sec
+            Debug.Log($"[Pheromone] Active cells: dig={activeDigCells.Count}, trail={activeTrailCells.Count}, nest={activeNestCells.Count}");
+
         if (!isInitialized) return;
 
         float digDecay = decayRate * Time.deltaTime;

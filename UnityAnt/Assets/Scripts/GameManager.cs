@@ -16,7 +16,7 @@ public class GameManager : MonoBehaviour
     public GameObject antPrefab;
     public static bool colonyDiggingStarted = false;
 
-    private List<AntAgent> allAnts = new();
+    public List<AntAgent> allAnts = new();
     private float dugVolume = 0f;
     private int digCounter = 0;
     public int digsPerColonyGrowth = 25;

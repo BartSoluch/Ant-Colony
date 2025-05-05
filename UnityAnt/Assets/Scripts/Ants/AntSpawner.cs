@@ -52,12 +52,12 @@ public class AntSpawner : MonoBehaviour
             AntAgent queenAgent = queen.GetComponent<AntAgent>();
             queenAgent.currentRole = AntAgent.Role.Queen;
             GameManager.Instance.RegisterAnt(queenAgent);
-            AllAnts.Add(queenAgent); // 🔥 Track queen
-            Debug.Log("👑 Spawned Queen at " + queenSpawnPos);
+            AllAnts.Add(queenAgent); //  Track queen
+            Debug.Log("Spawned Queen at " + queenSpawnPos);
         }
         else
         {
-            Debug.LogError("❌ Could not place queen — aborting spawn.");
+            Debug.LogError("Could not place queen — aborting spawn.");
             yield break;
         }
 
@@ -85,7 +85,7 @@ public class AntSpawner : MonoBehaviour
             }
             else
             {
-                Debug.LogWarning($"⚠️ Could not find ground for Ant {i}, skipping.");
+                Debug.LogWarning($"Could not find ground for Ant {i}, skipping.");
             }
         }
     }

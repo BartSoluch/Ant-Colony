@@ -18,11 +18,11 @@ public class ChunkManager : MonoBehaviour
     public float baseGroundHeightMultiplier = 2.5f;
 
     [Header("Chamber Generation Settings")]
-    [Range(0f, 1f)] public float fungusMinDepthFrac = 0.3f;
-    [Range(0f, 1f)] public float fungusMaxDepthFrac = 0.65f;
-    [Range(0f, 1f)] public float nurseryMinDepthFrac = 0.66f;
-    [Range(0f, 1f)] public float nurseryMaxDepthFrac = 0.85f;
-    [Range(0f, 1f)] public float wasteMaxDepthFrac = 0.29f;
+    [Range(0f, 1f)] public float fungusMinDepthFrac = 0.61f;
+    [Range(0f, 1f)] public float fungusMaxDepthFrac = 0.9f;
+    [Range(0f, 1f)] public float nurseryMinDepthFrac = 0.31f;
+    [Range(0f, 1f)] public float nurseryMaxDepthFrac = 0.60f;
+    [Range(0f, 1f)] public float wasteMaxDepthFrac = 0.3f;
 
     public enum ChamberType { None, FungusGarden, Nursery, WasteDump }
     private ChamberType[,,] zoneMap;
@@ -293,17 +293,17 @@ public class ChunkManager : MonoBehaviour
                     float co2 = SampleCO2AtWorldPosition(worldPos);
                     float depth = y;
 
-                    if (water >= 0.6f && co2 <= 0.3f && depth >= fungusMinY && depth <= fungusMaxY)
+                    if (water >= 0.5f && co2 <= 0.5f && co2 >= 0.1f && depth >= fungusMinY && depth <= fungusMaxY)
                     {
                         zoneMap[x, y, z] = ChamberType.FungusGarden;
                         fungus++;
                     }
-                    else if (water >= 0.4f && water < 0.6f && co2 <= 0.3f && depth >= nurseryMinY && depth <= nurseryMaxY)
+                    else if (water >= 0.6f && co2 >= 0.85f && depth >= nurseryMinY && depth <= nurseryMaxY)
                     {
                         zoneMap[x, y, z] = ChamberType.Nursery;
                         nursery++;
                     }
-                    else if (co2 >= 0.5f && water <= 0.4f && depth <= wasteMaxY)
+                    else if (water <= 0.5f && depth <= wasteMaxY)
                     {
                         zoneMap[x, y, z] = ChamberType.WasteDump;
                         waste++;
@@ -420,7 +420,8 @@ public class ChunkManager : MonoBehaviour
     public void SaveAllChunkDensities(int snapshotId)
     {
         string projectRoot = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
-        string basePath = Path.GetFullPath(Path.Combine(projectRoot, "../..", "Ant-Colony-Results"));
+        string basePath = Path.GetFullPath(Path.Combine(projectRoot, "..", "Ant-Colony-Results"));
+
         Directory.CreateDirectory(basePath);
 
         foreach (var chunk in GetAllChunks())
