@@ -144,8 +144,8 @@ public class AntAgent : MonoBehaviour
                 energyDecayRate = 0.7f; // Faster decay
                 break;
             case Role.Queen:
-                maxAge = 1200f; // 20-60 min (or even infinite for test)
-                energy = 120f;
+                maxAge = 1800f; // 20-60 min (or even infinite for test)
+                energy = 180f;
                 energyDecayRate = 0.1f; // Very slow decay
                 break;
         }

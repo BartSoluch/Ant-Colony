@@ -15,16 +15,13 @@ def load_chunk_volume(chunk_file):
             return 0
         padded, count = struct.unpack("ii", header)
         data = np.frombuffer(f.read(count * 4), dtype=np.float32)
-        return np.sum(data < 0)  # count empty voxels
+        return np.sum(data < 0) / 8000  # convert voxel count to m
 
 def load_ant_positions(csv_file):
     try:
         df = pd.read_csv(csv_file, header=None)
-
-        # Get X, Y, Z columns: pos.x = col 2, pos.y = col 3, pos.z = col 4
         df_numeric = df.iloc[:, 2:5].apply(pd.to_numeric, errors="coerce")
         df_clean = df_numeric.dropna()
-
         if df_clean.empty:
             return None
         return df_clean.values
@@ -55,24 +52,26 @@ def analyze_simulation(sim_path):
 
     results = []
     queen_death_timestep = None
+    initial_volume = None
 
     for t in all_timesteps:
         ant_file = os.path.join(ant_dir, f"ants_t{t}.csv")
         try:
             with open(ant_file, "r") as f:
                 lines = f.readlines()
-
-            # Skip timesteps with no ants
             if not lines:
                 continue
 
-            # Now it's safe to process chunk data
             chunk_files = glob(os.path.join(chunk_dir, f"*t{t}.bin"))
             total_empty_voxels = sum(load_chunk_volume(f) for f in chunk_files)
 
-            # Check if Queen is still alive (first line)
+            if initial_volume is None:
+                initial_volume = total_empty_voxels
+
+            dug_volume = max(0, total_empty_voxels - initial_volume)
+
             if queen_death_timestep is None and "Queen" not in lines[0]:
-                queen_death_timestep = t
+                queen_death_timestep = t * 10  # seconds
 
             ant_count = len(lines)
             positions = load_ant_positions(ant_file)
@@ -81,8 +80,8 @@ def analyze_simulation(sim_path):
             pher_totals = load_pheromone_totals(pher_dir, t)
 
             results.append({
-                "timestep": t,
-                "nest_volume": total_empty_voxels,
+                "time_seconds": t * 10,
+                "nest_volume_m3": dug_volume,
                 "ant_count": ant_count,
                 "ant_x": center_of_mass[0],
                 "ant_y": center_of_mass[1],
@@ -94,14 +93,13 @@ def analyze_simulation(sim_path):
             print(f"Skipped timestep {t} due to error: {e}")
             continue
 
-
     return pd.DataFrame(results), queen_death_timestep
 
 def plot_nest_volume(df, sim_path):
     plt.figure()
-    plt.plot(df["timestep"], df["nest_volume"])
-    plt.xlabel("Timestep")
-    plt.ylabel("Nest Volume (voxels)")
+    plt.plot(df["time_seconds"], df["nest_volume_m3"])
+    plt.xlabel("Time (s)")
+    plt.ylabel("Nest Volume (Meters Cubed)")
     plt.title("Nest Volume Over Time")
     plt.grid()
     plt.savefig(os.path.join(sim_path, "nest_volume.png"))
@@ -113,8 +111,8 @@ def plot_pheromones(df, sim_path):
         return
     plt.figure()
     for col in pher_cols:
-        plt.plot(df["timestep"], df[col], label=col)
-    plt.xlabel("Timestep")
+        plt.plot(df["time_seconds"], df[col], label=col)
+    plt.xlabel("Time (s)")
     plt.ylabel("Total Pheromone")
     plt.title("Pheromone Totals Over Time")
     plt.legend()
@@ -124,12 +122,12 @@ def plot_pheromones(df, sim_path):
 
 def plot_ant_count(df, sim_path, queen_death_timestep=None):
     plt.figure()
-    plt.plot(df["timestep"], df["ant_count"])
-    plt.xlabel("Timestep")
+    plt.plot(df["time_seconds"], df["ant_count"])
+    plt.xlabel("Time (s)")
     plt.ylabel("Alive Ants")
     plt.title("Ant Population Over Time")
     plt.grid()
-    if queen_death_timestep is not None and queen_death_timestep in df["timestep"].values:
+    if queen_death_timestep is not None and queen_death_timestep in df["time_seconds"].values:
         plt.axvline(queen_death_timestep, color='red', linestyle='--', label='Queen Died')
         plt.legend()
     plt.savefig(os.path.join(sim_path, "ant_count.png"))
@@ -137,10 +135,10 @@ def plot_ant_count(df, sim_path, queen_death_timestep=None):
 
 def plot_ant_center_of_mass(df, sim_path):
     plt.figure()
-    plt.plot(df["timestep"], df["ant_y"], label="Y (depth)")
-    plt.plot(df["timestep"], df["ant_x"], label="X")
-    plt.plot(df["timestep"], df["ant_z"], label="Z")
-    plt.xlabel("Timestep")
+    plt.plot(df["time_seconds"], df["ant_y"], label="Y (depth)")
+    plt.plot(df["time_seconds"], df["ant_x"], label="X")
+    plt.plot(df["time_seconds"], df["ant_z"], label="Z")
+    plt.xlabel("Time (s)")
     plt.ylabel("Average Ant Position")
     plt.title("Ant Center of Mass Over Time")
     plt.legend()
@@ -156,8 +154,7 @@ def plot_chamber_summary(sim_path):
         return
     summary_file = summary_files[-1]
 
-    df = pd.read_csv(summary_file)
-    df = df.dropna()
+    df = pd.read_csv(summary_file).dropna()
     labels = df["Zone"].astype(str)
     sizes = df["Count"].astype(float)
 
@@ -169,14 +166,14 @@ def plot_chamber_summary(sim_path):
     plt.close()
 
 def plot_digging_rate_per_ant(df, sim_path):
-    delta_volume = df["nest_volume"].diff()
+    delta_volume = df["nest_volume_m3"].diff()
     avg_ants = df["ant_count"].rolling(window=2).mean()
     digging_rate = delta_volume / avg_ants.replace(0, np.nan)
 
     plt.figure()
-    plt.plot(df["timestep"], digging_rate)
-    plt.xlabel("Timestep")
-    plt.ylabel("Digging Rate per Ant (Volume/Ant)")
+    plt.plot(df["time_seconds"], digging_rate)
+    plt.xlabel("Time (s)")
+    plt.ylabel("Digging Rate per Ant (Meters Cubed/Ant)")
     plt.title("Digging Rate per Ant Over Time")
     plt.grid()
     plt.savefig(os.path.join(sim_path, "digging_rate_per_ant.png"))
@@ -195,7 +192,7 @@ def main():
         df.to_csv(os.path.join(sim_path, "summary.csv"), index=False)
 
         plot_nest_volume(df, sim_path)
-        #plot_pheromones(df, sim_path)
+        # plot_pheromones(df, sim_path)
         plot_digging_rate_per_ant(df, sim_path)
         plot_ant_count(df, sim_path, queen_death)
         plot_ant_center_of_mass(df, sim_path)
