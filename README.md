@@ -163,12 +163,12 @@ When simulation is running, snapshots are saved to:
 
 This project uses the following third-party tools/resources:
 
-- **Marching Cubes Tables** – Triangulation and edge lookup tables adapted from [Paul Bourke](http://paulbourke.net/geometry/polygonise/)
-- **Unity Compute Shader Examples** – Adapted from Unity documentation, Unity forums, and relevant GitHub examples
+- **Marching Cubes Tables** – Triangulation and edge lookup tables adapted from [Paul Bourke](http://paulbourke.net/geometry/polygonise/).
+- **Unity Compute Shader Examples** – Adapted from Unity documentation, Unity forums, and relevant GitHub examples.
 - **Ant 3D Model & Assets**:
   - [TurboSquid Ant Model](https://www.turbosquid.com/3d-models/ant-anim_run-856094)
-  - [CGTrader Low Poly Plants](https://www.cgtrader.com/free-3d-models/plant/bush/shapespark-low-poly-plants-kit-free-low-poly-3d-model)
+  - [4K Realistic Outdoor Materials](https://assetstore.unity.com/packages/2d/textures-materials/4k-realistic-outdoor-materials-295565)
 - **Biological and Stigmergy References**:
-  - Research literature including Tschinkel (2004), Camazine et al. (2001), and others cited in the project report
+  - Research literature including Tschinkel (2004), Camazine et al. (2001), and others cited in the project report.
 
 ---
