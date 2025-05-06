@@ -139,3 +139,36 @@ When simulation is running, snapshots are saved to:
 - Pheromone visualizations are stubbed but not fully enabled.
 
 ---
+
+## Statement of Contributions
+
+### Authors
+- **Linton Fogden**
+- **Bartlomiej Soluch**
+
+### Contribution Breakdown
+
+| Component                        | Contributor(s)     | Description                                           |
+|----------------------------------|--------------------|-------------------------------------------------------|
+| Agent Behavior (`AntAgent.cs`)   | Both         | Developed full stigmergic logic and chamber formation |
+| Terrain & Digging (`MarchingCubesGPU.cs`) | Linton Fogden | Built and optimized GPU terrain system using compute shaders |
+| World Generation (`ChunkManager.cs`) | Linton Fogden       | Designed environmental layers and chamber classification |
+| Player Tools (`PlayerController.cs`) | Bartlomiej Soluch | Implemented fly camera, interactive digging, debug view |
+| UI & Controls (`TimeScaleController.cs`) | Bartlomiej Soluch | Time control slider and HUD                          |
+| Data Export (`SimulationSnapshotExporter.cs`) | Linton Fogden | Export logic for density, ant state, pheromones     |
+
+---
+
+## External Resources & Libraries
+
+This project uses the following third-party tools/resources:
+
+- **Marching Cubes Tables** – Triangulation and edge lookup tables adapted from [Paul Bourke](http://paulbourke.net/geometry/polygonise/)
+- **Unity Compute Shader Examples** – Adapted from Unity documentation, Unity forums, and relevant GitHub examples
+- **Ant 3D Model & Assets**:
+  - [TurboSquid Ant Model](https://www.turbosquid.com/3d-models/ant-anim_run-856094)
+  - [CGTrader Low Poly Plants](https://www.cgtrader.com/free-3d-models/plant/bush/shapespark-low-poly-plants-kit-free-low-poly-3d-model)
+- **Biological and Stigmergy References**:
+  - Research literature including Tschinkel (2004), Camazine et al. (2001), and others cited in the project report
+
+---
