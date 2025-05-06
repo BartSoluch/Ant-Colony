@@ -6,7 +6,7 @@ using System.IO;
 public class ChunkManager : MonoBehaviour
 {
     public GameObject chunkPrefab;
-    public static int chunkSize = MarchingCubesGPU.N;  // Use as ChunkManager.chunkSize everywhere.
+    public static int chunkSize = MarchingCubesGPU.N;
     public int worldSizeX = 3;
     public int worldSizeY = 3;
     public int worldSizeZ = 3;
@@ -43,7 +43,7 @@ public class ChunkManager : MonoBehaviour
 
         chunks = new MarchingCubesGPU[worldSizeX, worldSizeY, worldSizeZ];
 
-        // Step 1: Spawn all chunks
+        //Spawn all chunks
         for (int x = 0; x < worldSizeX; x++)
         {
             for (int y = 0; y < worldSizeY; y++)
@@ -72,7 +72,7 @@ public class ChunkManager : MonoBehaviour
             }
         }
 
-        // 🛠 Step 2: Defer border syncing to next frame
+        //Defer border syncing to next frame
         Invoke(nameof(LateSyncChunks), 0f);
 
         InitializeChamberZones();
@@ -100,7 +100,6 @@ public class ChunkManager : MonoBehaviour
     }
 
     // Helper method to create a normals RenderTexture for a single chunk.
-    // Adjust resolution if needed; here we use N (64) as width/height and depth.
     RenderTexture CreateNormalsBuffer()
     {
         int rtWidth = MarchingCubesGPU.N; // Using the constant from MarchingCubesGPU.
@@ -191,7 +190,7 @@ public class ChunkManager : MonoBehaviour
             }
         }
 
-        // Step 2: Now sync all borders
+        //Now sync all borders
         foreach (var coord in affectedChunks)
         {
             MarchingCubesGPU chunk = GetChunk(coord.x, coord.y, coord.z);
@@ -201,9 +200,7 @@ public class ChunkManager : MonoBehaviour
             }
         }
 
-        // Step 3: Force GPU sync (small dummy buffer if needed)
-
-        // Step 4: Remesh all affected chunks
+        //Remesh all affected chunks
         foreach (var coord in affectedChunks)
         {
             MarchingCubesGPU chunk = GetChunk(coord.x, coord.y, coord.z);

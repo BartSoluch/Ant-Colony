@@ -1,7 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using MarchingCubesGPUProject; // Needed for ChunkManager reference
+using MarchingCubesGPUProject;
 
 public class AntSpawner : MonoBehaviour
 {
@@ -61,10 +61,10 @@ public class AntSpawner : MonoBehaviour
             yield break;
         }
 
-        // === Spawn Worker/Scout Ants ===
+        //Spawn Worker/Scout Ants
         for (int i = 0; i < numberOfAnts; i++)
         {
-            Vector2 randomCircle = Random.insideUnitCircle * 10f; // Moderate spread near queen
+            Vector2 randomCircle = Random.insideUnitCircle * 10f;
             Vector3 spawnPos = new Vector3(
                 centerXZ.x + randomCircle.x,
                 topY,

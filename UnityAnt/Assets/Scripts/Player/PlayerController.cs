@@ -111,7 +111,7 @@ public class PlayerController : MonoBehaviour
         {
             Vector3 worldVoxelPos = new Vector3(voxel.x, voxel.y, voxel.z);
 
-            // 🚀 Always find correct chunk for this voxel
+            // Always find correct chunk for this voxel
             MarchingCubesGPU chunk = chunkManager.GetChunkAtWorldPosition(worldVoxelPos);
 
             if (chunk != null)

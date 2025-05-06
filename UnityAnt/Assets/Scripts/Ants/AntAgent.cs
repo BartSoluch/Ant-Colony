@@ -1,5 +1,4 @@
-﻿// === AntAgent.cs (with Nest Site Selection, Stigmergy) ===
-using MarchingCubesGPUProject;
+﻿using MarchingCubesGPUProject;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
@@ -172,7 +171,7 @@ public class AntAgent : MonoBehaviour
             queenSettlePosition = transform.position;
         }
 
-        // 1) Compute centroid of all worker ants
+        //Compute centroid of all worker ants
         Vector3 target = queenHasSettled ? queenSettlePosition : (GameManager.Instance.FindWorkerCentre(transform.position, 20f) ?? transform.position);
 
         if (Time.time - lastDirectionUpdateTime > directionUpdateCooldown)
@@ -182,14 +181,14 @@ public class AntAgent : MonoBehaviour
         }
         Debug.DrawLine(transform.position, target, Color.magenta, 0.1f);
 
-        // 2) Stick to surface + move every frame (like Roam())
+        //Stick to surface + move every frame (like Roam())
         Vector3 surfN = SampleSurfaceNormal(transform.position);
         smoothedNormal = Vector3.Slerp(smoothedNormal, surfN, dt * 8f);
 
         Vector3 move = Vector3.ProjectOnPlane(currentDirection, smoothedNormal).normalized;
         transform.position += move * moveSpeed * Time.deltaTime;
 
-        // 3) Egg‐laying as before
+        //Egg‐laying as before
         if (GameManager.Instance.ShouldQueenLayEgg() && GameManager.Instance.CanSpawnMoreAnts())
         {
             for (int attempt = 0; attempt < 5; attempt++)
@@ -219,7 +218,7 @@ public class AntAgent : MonoBehaviour
                 }
                 if (blocked) continue;
 
-                // ✅ Valid spawn position
+                //Valid spawn position
                 GameManager.Instance.SpawnAntAt(
                     surface,
                     GameManager.Instance.DecideNextAntRole()

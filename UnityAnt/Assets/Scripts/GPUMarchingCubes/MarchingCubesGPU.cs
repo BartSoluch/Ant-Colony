@@ -14,7 +14,7 @@ namespace MarchingCubesGPUProject
         const int P = 1;  // padding
         const int SIZE = N * N * N * 3 * 5;
 
-        // New: Seed for noise generation
+        //Seed for noise generation
         public int m_seed = 0;
 
         // Existing fields...
@@ -34,7 +34,7 @@ namespace MarchingCubesGPUProject
         ComputeBuffer m_vertexCountBuffer;
         int m_actualVertexCount = 0;
 
-        // NEW: References for collision mesh updates.
+        //References for collision mesh updates.
         public MeshFilter collisionMeshFilter;   // Assign in Inspector (for collisions)
 
         private float[] cpuDensity;
