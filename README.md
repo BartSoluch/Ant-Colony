@@ -40,7 +40,7 @@ The simulation initializes with a queen ant and a number of workers and scouts. 
   - `Worker`: Digs and expands chamber zones.
   - `Scout`: Explores and deposits trail pheromones.
 - **Lifespan & Energy**: Ants age, consume energy, and die. New ants are spawned based on colony needs.
-- **Emergent Behavior**: Agents follow simple rules, leading to complex tunnel systems.
+- **Emergent Behaviour**: Agents follow simple rules, leading to complex tunnel systems.
 
 ### 3D Voxel Terrain
 - Terrain is generated with **Marching Cubes**.
@@ -71,7 +71,7 @@ The simulation initializes with a queen ant and a number of workers and scouts. 
 
 ---
 
-## Tunable Parameters
+## Tuneable Parameters
 
 ### `AntSpawner.cs`
 - `numberOfAnts`: Initial non-queen ants.
@@ -135,7 +135,7 @@ When simulation is running, snapshots are saved to:
 
 ## Known Issues
 - Ants may occasionally get stuck in zero-normal areas. They recover over time.
-- Partial remeshing is not yet implemented; full remeshes occur based on voxel dirty thresholds.
+- Partial remeshing is not yet implemented; full re-meshes occur based on voxel dirty thresholds.
 - Pheromone visualizations are stubbed but not fully enabled.
 
 ---
@@ -150,7 +150,7 @@ When simulation is running, snapshots are saved to:
 
 | Component                        | Contributor(s)     | Description                                           |
 |----------------------------------|--------------------|-------------------------------------------------------|
-| Agent Behavior (`AntAgent.cs`)   | Both         | Developed full stigmergic logic and chamber formation |
+| Agent Behaviour (`AntAgent.cs`)   | Both         | Developed full stigmergic logic and chamber formation |
 | Terrain & Digging (`MarchingCubesGPU.cs`) | Linton Fogden | Built and optimized GPU terrain system using compute shaders |
 | World Generation (`ChunkManager.cs`) | Linton Fogden       | Designed environmental layers and chamber classification |
 | Player Tools (`PlayerController.cs`) | Bartlomiej Soluch | Implemented fly camera, interactive digging, debug view |
